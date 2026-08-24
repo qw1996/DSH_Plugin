@@ -13,6 +13,12 @@ DeepSeek Harness（DSH）服务器纳管插件：纳管多台服务器（华为 
 
 两个 npm 包均已构建（`lib/` 已提交）：根目录的**主包**（后端服务 + 浏览器 UI）和 `server-manager/dsh-server-manager-tools/` 的**工具包**（8 个模型工具）。
 
+> **最快方式：用 `setup.ps1` 脚本**（Windows）——
+> `powershell -ExecutionPolicy Bypass -File setup.ps1 -Profile web -PresetId <你的preset id>`
+> 它会自动装包 + 挂载两行 + 重启。想预置服务器，就把 `servers.example.json` 复制成
+> `servers.local.json`（已 gitignore）填好真实地址，脚本会自动写入库存文件。
+> 手动步骤见下面 1–3。
+
 ### 1. 安装两个包到 DSH profile
 
 在 DSH 的 profile 目录（`~/.dsh/profiles/<name>/`）执行：

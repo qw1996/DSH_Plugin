@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "servers": [
+    {
+      "id": "192.168.1.10",
+      "name": "server1",
+      "role": "master",
+      "host": "192.168.1.10",
+      "sshUser": "root",
+      "sshPort": 22,
+      "bmcHost": "192.168.1.11",
+      "bmcUser": "Administrator",
+      "bmcPassword": "CHANGE_ME",
+      "tags": ["compute"],
+      "notes": "",
+      "enabled": true,
+      "createdAt": 0,
+      "updatedAt": 0
+    }
+  ]
+}

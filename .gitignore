@@ -4,6 +4,9 @@ dist/
 *.tsbuildinfo
 # lib/ 需提交，供 `npm install github:...` 直接安装
 
+# 本地服务器清单（含凭据，绝不提交）；模板见 servers.example.json
+servers.local.json
+
 # 日志与临时文件
 *.log
 npm-debug.log*
