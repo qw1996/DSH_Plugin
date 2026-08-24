@@ -9,23 +9,49 @@ DeepSeek Harness（DSH）服务器纳管插件：纳管多台服务器（华为 
 - 浏览器「服务器管理」仪表盘（设置 → 服务器管理）
 - 插件自更新（`git pull` + 更新按钮 / `server_update_plugin` 工具）
 
-## 安装（已构建，`lib/` 已提交）
+## 一键安装与生效（两个包 + 挂载 + 重启）
 
-本仓库根目录即 npm 包（`package.json` + 构建产物 `lib/`），另一台机器直接：
+两个 npm 包均已构建（`lib/` 已提交）：根目录的**主包**（后端服务 + 浏览器 UI）和 `server-manager/dsh-server-manager-tools/` 的**工具包**（8 个模型工具）。
+
+### 1. 安装两个包到 DSH profile
+
+在 DSH 的 profile 目录（`~/.dsh/profiles/<name>/`）执行：
 
 ```bash
+# 主包（后端 Service + 客户端 UI）
 npm install github:qw1996/DSH_Plugin
-# 或指定版本：npm install github:qw1996/DSH_Plugin#main
+
+# 工具包（8 个 server_* 模型工具，git 子目录需用 ::path: 语法）
+npm install "github:qw1996/DSH_Plugin#main::path:server-manager/dsh-server-manager-tools"
 ```
 
-安装后按下面的「挂载」把 composition 片段并入 DSH。
+> 若 git 子目录安装报错，用兜底：`git clone https://github.com/qw1996/DSH_Plugin`，再
+> `npm install ./DSH_Plugin` 和 `npm install ./DSH_Plugin/server-manager/dsh-server-manager-tools`。
 
-## 挂载
+### 2. 挂载（加两行组合）
 
-仓库 `server-manager/composition/` 里有两个片段：
+- **后端 + UI（host 平面）**：把 `server-manager/composition/host.patch.yml` 的内容并入
+  `~/.dsh/profiles/<name>/cordis.patch.yml`：
 
-1. `host.patch.yml` —— 并入 host composition（或 profile 的 `cordis.patch.yml`），挂载后端服务 + 客户端 UI。
-2. `preset.patch.yml` —— 并入目标 agent preset 的 `agent.cordis.yml`，挂载 8 个 `server_*` 模型工具。
+  ```yaml
+  - insert:
+      - id: server-manager
+        name: '@qinwei/dsh-server-manager'
+  ```
+
+- **8 个工具（agent 平面）**：把 `server-manager/composition/preset.patch.yml` 的内容并入目标
+  agent preset 的 `agent.cordis.yml`：
+
+  ```yaml
+  - insert:
+      - id: server-manager-tools
+        name: '@qinwei/dsh-server-manager-tools'
+  ```
+
+### 3. 重启并验证
+
+重启 DSH（web profile）。验证：浏览器「设置 → 服务器管理」出现仪表盘；起一个 agent 会话确认
+`server_list` 等 8 个工具可用。
 
 ## 构建（改源码后需要）
 
