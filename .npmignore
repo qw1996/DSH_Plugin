@@ -1,0 +1,9 @@
+# 只发布 lib/ 与 package.json（files 字段已白名单，这里是兜底）
+src/
+composition/
+host.js
+client.js
+tsconfig.json
+README.md
+node_modules/
+*.log

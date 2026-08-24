@@ -1,0 +1,6 @@
+# 加到 host composition / profile 的 cordis.patch.yml（host 平面）
+# 该行注册 `serverManager` Service（后台 + 持久化 + 巡检 + SSH/BMC），
+# 其 `dsh.client` 客户端半（浏览器「服务器管理」页）由 modules 扫描自动纳入。
+- insert:
+    - id: server-manager
+      name: '@qinwei/dsh-server-manager'

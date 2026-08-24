@@ -1,0 +1,11 @@
+# 依赖与构建产物
+node_modules/
+dist/
+*.tsbuildinfo
+# lib/ 需提交，供 `npm install github:...` 直接安装
+
+# 日志与临时文件
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

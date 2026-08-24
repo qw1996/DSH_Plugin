@@ -1,0 +1,6 @@
+# 加到目标 agent preset 的 agent.cordis.yml（agent 平面）
+# 该行给会话注册 8 个 server_* 模型工具；它 inject 的 `serverManager` 由 host 平面提供，
+# `tools` 是 host 注册表按会话分层——本行不发布任何 Service，可松散放置。
+- insert:
+    - id: server-manager-tools
+      name: '@qinwei/dsh-server-manager-tools'
