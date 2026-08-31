@@ -1,0 +1,6 @@
+# 可选：若只想让某个 agent preset 独占本插件（工具+种子技能注册到该 preset 层，
+# 而非全局），把下面这行加到该 preset 的 agent.cordis.yml，并从 host composition 移除同名行。
+# 默认推荐用 host.patch.yml（全局，所有 agent 共享自我进化能力）。
+# - insert:
+#     - id: skill-experience
+#       name: '@qinwei/dsh-skill-experience'

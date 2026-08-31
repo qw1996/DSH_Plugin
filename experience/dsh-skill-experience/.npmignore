@@ -1,0 +1,11 @@
+# 只发布 lib/ 与 package.json（files 字段已白名单，这里是兜底）
+src/
+node_modules/
+host.js
+_smoke.cjs
+tsconfig.json
+tsdown.config.ts
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

@@ -1,0 +1,8 @@
+# 加到 host composition / profile 的 cordis.patch.yml（host 平面）
+# 注册 dsh-skill-experience 包：3 个模型工具（experience_capture/recall/list）
+# + 运行时种子技能 learn-experience / recall-experience（ctx.skills.register，rank 250，全局层）。
+# 工具与种子技能均注册到全局层，对所有 agent 可见。
+# 不发布任何 Service（无跨会话状态；经验落盘由模型的 `write` 工具承担）。
+- insert:
+    - id: skill-experience
+      name: '@qinwei/dsh-skill-experience'

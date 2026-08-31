@@ -2,7 +2,7 @@
 node_modules/
 dist/
 *.tsbuildinfo
-# lib/ 需提交，供 `npm install github:...` 直接安装
+# lib/ 需提交，供 setup.ps1 本地路径安装
 
 # 本地服务器清单（含凭据，绝不提交）；模板见 servers.example.json
 servers.local.json
