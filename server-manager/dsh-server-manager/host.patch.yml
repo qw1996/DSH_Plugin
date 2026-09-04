@@ -1,0 +1,9 @@
+# Bundle patch layer for @qinwei/dsh-server-manager.
+# Applied automatically when the package is installed via
+#   dsh plugin --profile <name> add @qinwei/dsh-server-manager
+# (declared as `dsh.bundle.patch` in package.json).
+# Registers the serverManager service (backend + persistence + inspection + SSH/BMC);
+# its dsh.client half (the browser "Server Management" dashboard) is picked up by module scanning.
+- insert:
+    - id: server-manager
+      name: '@qinwei/dsh-server-manager'

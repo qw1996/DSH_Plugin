@@ -1,7 +1,7 @@
 {
   "name": "@qinwei/dsh-server-manager-tools",
   "description": "Agent tools (server_*) for the dsh-server-manager backend.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -17,6 +17,9 @@
     "lib/index.d.ts"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-tools": "^0.1.0-rc.7"
