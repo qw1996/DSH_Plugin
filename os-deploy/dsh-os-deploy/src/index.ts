@@ -1,0 +1,455 @@
+// dsh-os-deploy —— Host 半：OS 自动化部署后端 Service
+// 提供服务 `osDeploy`（@Remote 方法供浏览器 UI 调用），持有镜像管理/任务队列/部署引擎。
+import { Service } from '@deepseek-ai/cordis'
+import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import * as fs from 'fs'
+import * as path from 'path'
+import * as crypto from 'crypto'
+import type {
+  IsoImage, DeployTask, TargetDevice, InstallComponent,
+  RegisterIsoRequest, RegisterIsoResult,
+  ListImagesResult, ListTasksResult,
+  CreateTaskRequest, CreateTaskResult,
+  GetTaskDetailRequest, GetTaskDetailResult,
+  CancelTaskRequest, CancelTaskResult,
+  DeleteTaskRequest, DeleteTaskResult,
+  ListComponentsRequest, ListComponentsResult,
+  ProbeDeviceRequest, ProbeDeviceResult,
+  ExtractImageRequest, ExtractImageResult,
+  DeleteImageRequest, DeleteImageResult,
+  GetServerListResult,
+} from './types'
+import {
+  RedfishClient, DeployHttpServer, DeployRunner, DeploySpec,
+  extractIso, genKickstart, genPreseed,
+} from './engine'
+
+type Json = any
+
+const HTTP_PORT = 8080
+
+const COMPONENTS: Record<string, InstallComponent[]> = {
+  openEuler: [
+    { id: 'core', name: '最小化安装', description: '@core + SSH + 基本工具', packages: ['@core', 'openssh-server', 'curl', 'wget', 'tar'] },
+    { id: 'ssh-server', name: 'SSH 服务器', description: 'openssh-server（最小化已含）', packages: ['openssh-server'] },
+    { id: 'devel', name: '开发工具', description: 'GCC / G++ / Make / GDB / Git', packages: ['@development', 'gcc', 'gcc-c++', 'make', 'gdb', 'git'] },
+    { id: 'minimal-extra', name: '常用工具', description: 'vim / net-tools / bind-utils', packages: ['vim', 'net-tools', 'bind-utils'] },
+  ],
+  kylin: [
+    { id: 'core', name: '最小化安装', description: '@core + SSH + 基本工具', packages: ['@core', 'openssh-server', 'curl', 'wget', 'tar'] },
+    { id: 'ssh-server', name: 'SSH 服务器', description: 'openssh-server（最小化已含）', packages: ['openssh-server'] },
+    { id: 'devel', name: '开发工具', description: 'GCC / G++ / Make / GDB / Git', packages: ['@development', 'gcc', 'gcc-c++', 'make', 'gdb', 'git'] },
+    { id: 'minimal-extra', name: '常用工具', description: 'vim / net-tools / bind-utils', packages: ['vim', 'net-tools', 'bind-utils'] },
+  ],
+  debian: [
+    { id: 'core', name: '最小化安装', description: 'base + SSH + curl', packages: ['openssh-server', 'curl'] },
+    { id: 'ssh-server', name: 'SSH 服务器', description: 'openssh-server', packages: ['openssh-server'] },
+    { id: 'devel', name: '开发工具', description: 'build-essential / GCC / Make / GDB / Git', packages: ['build-essential', 'gcc', 'make', 'gdb', 'git'] },
+  ],
+}
+
+export default class OsDeployService extends TypertRemoteService {
+  static inject = ['timer', 'subprocess', 'fs', 'sandboxPolicy']
+
+  images: IsoImage[] = []
+  tasks: Map<string, DeployTask> = new Map()
+  private httpServer: DeployHttpServer | null = null
+  private runners: Map<string, DeployRunner> = new Map()
+  private root: string | null = null
+  private dataFile: string | null = null
+  private queueRunning = false
+
+  constructor(ctx: any) {
+    super(ctx, 'osDeploy')
+    const sp = ctx.get('sandboxPolicy')
+    if (sp && typeof sp.workspaceRoot === 'string' && sp.workspaceRoot) {
+      this.root = sp.workspaceRoot.replace(/[\\/]+$/, '')
+    }
+    this.dataFile = this.root ? path.join(this.root, 'dsh-os-deploy-state.json') : null
+    this.load()
+  }
+
+  async [Service.init]() {
+    // Start HTTP server for serving packages to targets
+    this.httpServer = new DeployHttpServer(HTTP_PORT)
+    this.httpServer.onReport((query, ip) => this.handleReport(query, ip))
+    try {
+      await this.httpServer.start()
+      console.log(`[osdeploy] HTTP server listening on 0.0.0.0:${HTTP_PORT}`)
+    } catch (e: any) {
+      console.error(`[osdeploy] HTTP server failed to start: ${e.message}`)
+    }
+    // Resume any queued tasks
+    this.processQueue()
+  }
+
+  async [Service.dispose]() {
+    if (this.httpServer) this.httpServer.stop()
+    for (const [, r] of this.runners) r.cancel()
+  }
+
+  // ---------- 持久化 ----------
+  private load() {
+    if (!this.dataFile || !fs.existsSync(this.dataFile)) return
+    try {
+      const data = JSON.parse(fs.readFileSync(this.dataFile, 'utf8'))
+      this.images = data.images || []
+      for (const t of (data.tasks || [])) this.tasks.set(t.id, t)
+    } catch (e) { console.error('[osdeploy] load state error:', e) }
+  }
+
+  private save() {
+    if (!this.dataFile) return
+    try {
+      fs.writeFileSync(this.dataFile, JSON.stringify({
+        images: this.images,
+        tasks: Array.from(this.tasks.values()),
+      }, null, 2))
+    } catch (e) { console.error('[osdeploy] save state error:', e) }
+  }
+
+  // ---------- @Remote: 镜像管理 ----------
+  @Remote()
+  async listServers(): Promise<GetServerListResult> {
+    // Try to get servers from server-manager plugin's inventory
+    try {
+      const invFile = this.root ? path.join(this.root, 'dsh-server-inventory.json') : null
+      if (invFile && fs.existsSync(invFile)) {
+        const data = JSON.parse(fs.readFileSync(invFile, 'utf8'))
+        const servers = (data.servers || data || []).map((s: any) => ({
+          id: s.id || s.host,
+          name: s.name || s.host,
+          host: s.host || s.sshHost || '',
+          bmcHost: s.bmcHost || s.bmc_host || '',
+          bmcUser: s.bmcUser || s.bmc_user || '',
+          sshUser: s.sshUser || 'root',
+        }))
+        return { servers }
+      }
+    } catch (e) { /* ignore */ }
+    return { servers: [] }
+  }
+
+  @Remote()
+  async registerIso(req: RegisterIsoRequest): Promise<RegisterIsoResult> {
+    try {
+      if (!req.isoPath || !fs.existsSync(req.isoPath)) {
+        return { ok: false, error: `ISO file not found: ${req.isoPath}` }
+      }
+      if (!['openEuler', 'kylin', 'debian'].includes(req.vendor)) {
+        return { ok: false, error: `Unsupported vendor: ${req.vendor} (openEuler/kylin/debian)` }
+      }
+      const stat = fs.statSync(req.isoPath)
+      const id = 'img_' + crypto.randomBytes(6).toString('hex')
+      const distroId = path.basename(req.isoPath, '.iso').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30)
+      const image: IsoImage = {
+        id, name: req.name || path.basename(req.isoPath),
+        vendor: req.vendor as any, isoPath: req.isoPath,
+        distroId, extractedDir: null, extracted: false,
+        sizeBytes: stat.size, registeredAt: Date.now(),
+      }
+      this.images.push(image)
+      this.save()
+      return { ok: true, image }
+    } catch (e: any) { return { ok: false, error: String(e.message || e) } }
+  }
+
+  @Remote()
+  async extractImage(req: ExtractImageRequest): Promise<ExtractImageResult> {
+    const img = this.images.find(i => i.id === req.imageId)
+    if (!img) return { ok: false, error: 'image not found' }
+    if (img.extracted && img.extractedDir) return { ok: true }
+    const outDir = path.join(this.root || os.tmpdir(), 'os-deploy-repo', img.distroId)
+    const result = extractIso(img.isoPath, outDir)
+    if (result.ok) {
+      img.extracted = true
+      img.extractedDir = outDir
+      // Register HTTP root
+      if (this.httpServer) this.httpServer.setRoot(`/repo/${img.distroId}`, outDir)
+      this.save()
+      return { ok: true }
+    }
+    return { ok: false, error: result.error || 'extraction failed' }
+  }
+
+  @Remote()
+  async deleteImage(req: DeleteImageRequest): Promise<DeleteImageResult> {
+    const idx = this.images.findIndex(i => i.id === req.imageId)
+    if (idx < 0) return { ok: false, error: 'image not found' }
+    const img = this.images[idx]
+    if (this.httpServer) this.httpServer.removeRoot(`/repo/${img.distroId}`)
+    this.images.splice(idx, 1)
+    this.save()
+    return { ok: true }
+  }
+
+  @Remote()
+  async listImages(): Promise<ListImagesResult> {
+    return { images: this.images }
+  }
+
+  // ---------- @Remote: 组件列表 ----------
+  @Remote()
+  async listComponents(req: ListComponentsRequest): Promise<ListComponentsResult> {
+    return { components: COMPONENTS[req.vendor] || [] }
+  }
+
+  // ---------- @Remote: 设备探测 ----------
+  @Remote()
+  async probeDevice(req: ProbeDeviceRequest): Promise<ProbeDeviceResult> {
+    try {
+      const rf = new RedfishClient({ host: req.bmcHost, user: req.bmcUser, pass: req.bmcPassword })
+      const sys = await rf.getSystem()
+      const storages = await rf.getStorage()
+      const disks: any[] = []
+      let nicMac = ''
+      if (storages) {
+        for (const s of storages) {
+          for (const d of (s.driveDetails || [])) {
+            disks.push({
+              id: d.Id || '',
+              serial: (d.SerialNumber || '').trim(),
+              capacityBytes: d.CapacityBytes || 0,
+              media: d.MediaType || 'HDD',
+            })
+          }
+        }
+      }
+      // Try to get NIC info from EthernetInterfaces
+      try {
+        const eth = await rf.get('/redfish/v1/Systems/1/EthernetInterfaces')
+        if (eth.status === 200 && eth.json.Members) {
+          const first = await rf.get(eth.json.Members[0]['@odata.id'])
+          if (first.status === 200) nicMac = first.json.MACAddress || ''
+        }
+      } catch (e) { /* ignore */ }
+      return {
+        ok: true,
+        model: sys.Model || '',
+        serial: sys.SerialNumber || '',
+        powerState: sys.PowerState || '',
+        nicMac, disks,
+      }
+    } catch (e: any) { return { ok: false, error: String(e.message || e) } }
+  }
+
+  // ---------- @Remote: 任务管理 ----------
+  @Remote()
+  async createTask(req: CreateTaskRequest): Promise<CreateTaskResult> {
+    try {
+      const img = this.images.find(i => i.id === req.imageId)
+      if (!img) return { ok: false, error: 'image not found' }
+      if (!req.devices || req.devices.length === 0) return { ok: false, error: 'no devices' }
+      const taskIds: string[] = []
+      for (const device of req.devices) {
+        const id = 'task_' + crypto.randomBytes(6).toString('hex')
+        const task: DeployTask = {
+          id, imageId: req.imageId, device, components: req.components || ['core'],
+          status: 'queued', createdAt: Date.now(),
+          startedAt: null, finishedAt: null, progress: 0,
+          stage: 'queued', logs: [], error: null,
+          queueKey: device.bmcHost,
+        }
+        this.tasks.set(id, task)
+        taskIds.push(id)
+      }
+      this.save()
+      this.processQueue()
+      return { ok: true, taskIds }
+    } catch (e: any) { return { ok: false, error: String(e.message || e) } }
+  }
+
+  @Remote()
+  async listTasks(): Promise<ListTasksResult> {
+    return { tasks: Array.from(this.tasks.values()) }
+  }
+
+  @Remote()
+  async getTaskDetail(req: GetTaskDetailRequest): Promise<GetTaskDetailResult> {
+    const task = this.tasks.get(req.taskId)
+    if (!task) return { task: null, error: 'task not found' }
+    return { task }
+  }
+
+  @Remote()
+  async cancelTask(req: CancelTaskRequest): Promise<CancelTaskResult> {
+    const task = this.tasks.get(req.taskId)
+    if (!task) return { ok: false, error: 'task not found' }
+    if (task.status === 'running') {
+      const runner = this.runners.get(req.taskId)
+      if (runner) runner.cancel()
+      task.status = 'cancelled'
+      task.finishedAt = Date.now()
+    } else if (task.status === 'queued') {
+      task.status = 'cancelled'
+      task.finishedAt = Date.now()
+    }
+    this.save()
+    return { ok: true }
+  }
+
+  @Remote()
+  async deleteTask(req: DeleteTaskRequest): Promise<DeleteTaskResult> {
+    const task = this.tasks.get(req.taskId)
+    if (!task) return { ok: false, error: 'task not found' }
+    if (task.status === 'running') return { ok: false, error: 'cannot delete running task (cancel first)' }
+    this.tasks.delete(req.taskId)
+    this.save()
+    return { ok: true }
+  }
+
+  // ---------- 任务队列（同一 BMC 串行执行）----------
+  private processQueue() {
+    if (this.queueRunning) return
+    this.queueRunning = true
+    this.runNextFromQueue()
+  }
+
+  private runNextFromQueue() {
+    // Find next queued task whose queueKey isn't currently running
+    const runningKeys = new Set(
+      Array.from(this.tasks.values())
+        .filter(t => t.status === 'running')
+        .map(t => t.queueKey)
+    )
+    const next = Array.from(this.tasks.values())
+      .filter(t => t.status === 'queued' && !runningKeys.has(t.queueKey))
+      .sort((a, b) => a.createdAt - b.createdAt)[0]
+
+    if (!next) {
+      this.queueRunning = false
+      return
+    }
+
+    // Run this task
+    this.runTask(next).then(() => {
+      // Check for more queued tasks
+      this.runNextFromQueue()
+    }).catch(e => {
+      console.error('[osdeploy] task error:', e)
+      this.runNextFromQueue()
+    })
+  }
+
+  private async runTask(task: DeployTask) {
+    const img = this.images.find(i => i.id === task.imageId)
+    if (!img) { task.status = 'failed'; task.error = 'image not found'; this.save(); return }
+
+    // Auto-extract if needed
+    if (!img.extracted) {
+      task.status = 'running'
+      task.startedAt = Date.now()
+      this.addLog(task, 'info', `Extracting ISO: ${img.name}...`)
+      const outDir = path.join(this.root || process.cwd(), 'os-deploy-repo', img.distroId)
+      const result = extractIso(img.isoPath, outDir)
+      if (result.ok) {
+        img.extracted = true
+        img.extractedDir = outDir
+        if (this.httpServer) this.httpServer.setRoot(`/repo/${img.distroId}`, outDir)
+        this.save()
+        this.addLog(task, 'info', 'ISO extracted successfully')
+      } else {
+        task.status = 'failed'
+        task.error = `ISO extraction failed: ${result.error}`
+        task.finishedAt = Date.now()
+        this.addLog(task, 'error', task.error!)
+        this.save()
+        return
+      }
+    }
+
+    // Start deployment
+    task.status = 'running'
+    task.startedAt = Date.now()
+    this.addLog(task, 'info', `Starting deployment to ${task.device.bmcHost}...`)
+
+    const serverIp = await this.getLocalIp()
+    const spec: DeploySpec = {
+      bmc: { host: task.device.bmcHost, user: task.device.bmcUser, pass: task.device.bmcPassword },
+      nicMac: task.device.nicMac,
+      hostname: task.device.hostname,
+      osIp: task.device.osIp,
+      osGateway: task.device.osGateway,
+      osPrefixLen: task.device.osPrefixLen,
+      osDns: task.device.osDns,
+      rootPassword: task.device.rootPassword,
+      diskSn: '', // will be resolved during install (user selects)
+      distroId: img.distroId,
+      vendor: img.vendor,
+      repoDir: img.extractedDir || '',
+      components: task.components,
+    }
+
+    const runner = new DeployRunner(spec, serverIp, HTTP_PORT, (stage, progress, log) => {
+      task.stage = stage
+      task.progress = progress
+      if (log) this.addLog(task, 'info', log)
+    })
+    this.runners.set(task.id, runner)
+
+    const result = await runner.run()
+    this.runners.delete(task.id)
+
+    if (result.ok) {
+      task.status = 'success'
+      task.progress = 100
+      this.addLog(task, 'success', 'OS installation completed successfully!')
+    } else {
+      task.status = 'failed'
+      task.error = result.error || 'unknown error'
+      this.addLog(task, 'error', `Deployment failed: ${task.error}`)
+    }
+    task.finishedAt = Date.now()
+    this.save()
+  }
+
+  // ---------- Report handler (called by target during install) ----------
+  private handleReport(query: URLSearchParams, ip: string) {
+    const stage = query.get('stage') || ''
+    const data = query.get('d') || ''
+    console.log(`[osdeploy] report from ${ip}: stage=${stage} d=${data.slice(0, 100)}`)
+
+    // Find running task for this IP
+    for (const [, task] of this.tasks) {
+      if (task.status === 'running' && task.device.osIp === ip) {
+        this.addLog(task, 'info', `[installer] ${stage}: ${data}`)
+        // Update progress based on stage
+        const stageProgress: Record<string, number> = {
+          'pre-start': 30, 'cmdline': 32, 'disks': 34, 'disk-resolved': 36,
+          'pre-done': 38, 'include-uploaded': 40, 'post-install': 85, 'firstboot': 95,
+        }
+        if (stage in stageProgress) {
+          task.progress = stageProgress[stage]
+          task.stage = stage
+        }
+        this.save()
+        break
+      }
+    }
+  }
+
+  // ---------- 工具方法 ----------
+  private addLog(task: DeployTask, level: string, msg: string) {
+    task.logs.push({ ts: Date.now(), level: level as any, msg })
+    if (task.logs.length > 200) task.logs.splice(0, task.logs.length - 200)
+  }
+
+  private async getLocalIp(): Promise<string> {
+    return new Promise((resolve) => {
+      const os = require('os')
+      const ifs = os.networkInterfaces()
+      for (const name of Object.keys(ifs)) {
+        for (const i of ifs[name]) {
+          if (i.family === 'IPv4' && !i.internal) {
+            resolve(i.address)
+            return
+          }
+        }
+      }
+      resolve('127.0.0.1')
+    })
+  }
+}
+
+declare const process: { cwd(): string }
+declare const os: { tmpdir(): string }

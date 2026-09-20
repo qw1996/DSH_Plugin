@@ -8,6 +8,7 @@ DeepSeek Harness（DSH）插件集合。**每个插件一个目录**，目录内
 |---|---|
 | [server-manager](./server-manager) | 服务器纳管：增删改查、SSH 下发命令、定期巡检、BMC 电源 / BIOS（Redfish，华为 iBMC），含浏览器仪表盘 |
 | [experience](./experience) | 经验自我进化：把解决的问题蒸馏成可继承技能，任务前召回历史经验，能力跨会话/项目进化 |
+| [os-deploy](./os-deploy) | OS 自动化部署：BMC 虚拟光驱 + kickstart/preseed，支持 openEuler/麒麟/Debian（aarch64），任务队列 + 实时进度仪表盘 |
 
 ## 一键安装（在另一台机器）
 
@@ -17,12 +18,13 @@ DeepSeek Harness（DSH）插件集合。**每个插件一个目录**，目录内
 git clone https://github.com/qw1996/DSH_Plugin.git
 cd DSH_Plugin
 
-# 装全部（server-manager + experience）
+# 装全部（server-manager + experience + os-deploy）
 powershell -ExecutionPolicy Bypass -File setup.ps1
 
 # 或只装某一个
 powershell -ExecutionPolicy Bypass -File setup.ps1 -Plugins experience
 powershell -ExecutionPolicy Bypass -File setup.ps1 -Plugins server-manager -PresetId <你的preset id>
+powershell -ExecutionPolicy Bypass -File setup.ps1 -Plugins os-deploy
 ```
 
 `setup.ps1` 做的事：

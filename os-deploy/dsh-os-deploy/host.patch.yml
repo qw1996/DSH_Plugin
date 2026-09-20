@@ -1,0 +1,5 @@
+# Bundle patch layer for @qinwei/dsh-os-deploy.
+# Registers the osDeploy service (backend + task queue + deployment engine + HTTP server).
+- insert:
+    - id: os-deploy
+      name: '@qinwei/dsh-os-deploy'

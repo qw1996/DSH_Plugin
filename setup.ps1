@@ -34,9 +34,9 @@ $pmVerb = if ($pm -eq 'pnpm') { 'add' } else { 'install' }
 Write-Host "package manager: $pm ($pmVerb)  profile: $profileDir" -ForegroundColor Cyan
 
 # 解析 -Plugins
-$wanted = if ($Plugins -eq 'all') { @('server-manager', 'experience') } else { $Plugins.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } }
+$wanted = if ($Plugins -eq 'all') { @('server-manager', 'experience', 'os-deploy') } else { $Plugins.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } }
 foreach ($p in $wanted) {
-  if ($p -notin @('server-manager', 'experience')) { throw "unknown plugin: $p (allowed: server-manager, experience, all)" }
+  if ($p -notin @('server-manager', 'experience', 'os-deploy')) { throw "unknown plugin: $p (allowed: server-manager, experience, os-deploy, all)" }
 }
 
 function Install-PmPkg {
@@ -120,6 +120,14 @@ if ($wanted -contains 'experience') {
   Add-PatchFromFile -PatchFile (Join-Path $repoRoot 'experience\composition\host.patch.yml') -TargetFile (Join-Path $profileDir 'cordis.patch.yml') -Marker 'skill-experience'
 }
 
+# ---------------- os-deploy ----------------
+if ($wanted -contains 'os-deploy') {
+  Write-Host '[os-deploy] install package' -ForegroundColor Cyan
+  Install-PmPkg (Join-Path $repoRoot 'os-deploy\dsh-os-deploy')
+  Write-Host '[os-deploy] mount host row' -ForegroundColor Cyan
+  Add-PatchFromFile -PatchFile (Join-Path $repoRoot 'os-deploy\composition\host.patch.yml') -TargetFile (Join-Path $profileDir 'cordis.patch.yml') -Marker 'os-deploy'
+}
+
 # ---------------- restart ----------------
 if ($NoRestart) {
   Write-Host 'restart skipped (-NoRestart)' -ForegroundColor Yellow
@@ -131,3 +139,4 @@ if ($NoRestart) {
 Write-Host 'Done.' -ForegroundColor Green
 Write-Host '  server-manager: Settings > Server Manager (add servers there).'
 Write-Host '  experience: tools experience_capture / experience_recall / experience_list; skills learn-experience / recall-experience (type / to browse).'
+Write-Host '  os-deploy: Settings > OS Deployment (register ISO, create tasks).'

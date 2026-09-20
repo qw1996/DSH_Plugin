@@ -1,0 +1,5 @@
+src/
+tsconfig.json
+tsdown.config.ts
+node_modules/
+*.tsbuildinfo

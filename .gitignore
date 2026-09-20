@@ -12,3 +12,6 @@ servers.local.json
 npm-debug.log*
 .DS_Store
 Thumbs.db
+
+os-deploy/dsh-os-deploy/node_modules/
+
