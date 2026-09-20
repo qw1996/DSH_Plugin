@@ -1,4 +1,4 @@
-# setup.ps1 — DSH_Plugin 一键安装（git clone 后在仓库根目录运行）
+﻿# setup.ps1 — DSH_Plugin 一键安装（git clone 后在仓库根目录运行）
 #
 # 用法：
 #   # 装全部（server-manager + experience）
