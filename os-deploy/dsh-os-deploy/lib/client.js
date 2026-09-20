@@ -1,11 +1,40 @@
-import * as React from "react";
-//#region src/client.ts
-const inject = [
-	"slots",
-	"remote",
-	"remote.osDeploy"
-];
-const CSS = `
+window.__ModuleLoader__.load({
+	id: "@qinwei/dsh-os-deploy",
+	factory: (require) => {
+		var module = { exports: {} };
+		var exports = module.exports;
+		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+		//#region \0rolldown/runtime.js
+		var __create = Object.create;
+		var __defProp = Object.defineProperty;
+		var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+		var __getOwnPropNames = Object.getOwnPropertyNames;
+		var __getProtoOf = Object.getPrototypeOf;
+		var __hasOwnProp = Object.prototype.hasOwnProperty;
+		var __copyProps = (to, from, except, desc) => {
+			if (from && typeof from === "object" || typeof from === "function") for (var keys = __getOwnPropNames(from), i = 0, n = keys.length, key; i < n; i++) {
+				key = keys[i];
+				if (!__hasOwnProp.call(to, key) && key !== except) __defProp(to, key, {
+					get: ((k) => from[k]).bind(null, key),
+					enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+				});
+			}
+			return to;
+		};
+		var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule || !__hasOwnProp.call(mod, "default") ? __defProp(target, "default", {
+			value: mod,
+			enumerable: true
+		}) : target, mod));
+		//#endregion
+		let react = require("react");
+		react = __toESM(react, 1);
+		//#region src/client.ts
+		const inject = [
+			"slots",
+			"remote",
+			"remote.osDeploy"
+		];
+		const CSS = `
 .osd-wrap{display:flex;flex-direction:column;gap:14px;padding:4px 2px}
 .osd-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .osd-btn{font:inherit;padding:6px 10px;border:1px solid rgba(128,128,128,.5);border-radius:6px;background:rgba(128,128,128,.12);cursor:pointer}
@@ -43,413 +72,417 @@ const CSS = `
 .osd-device-card{border:1px solid rgba(128,128,128,.35);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px}
 .osd-device-selected{border-color:rgba(59,130,246,.6);background:rgba(59,130,246,.08)}
 `;
-function apply(ctx) {
-	ctx.effect(() => {
-		const style = document.createElement("style");
-		style.textContent = CSS;
-		document.head.appendChild(style);
-		return () => style.remove();
-	});
-	const h = React.createElement;
-	const remote = ctx.remote.osDeploy;
-	function fmt(ts) {
-		if (!ts) return "—";
-		try {
-			return new Date(ts).toLocaleString();
-		} catch (e) {
-			return String(ts);
-		}
-	}
-	function btn(label, onClick, cls, disabled) {
-		return h("button", {
-			className: "osd-btn" + (cls ? " " + cls : ""),
-			onClick,
-			disabled: !!disabled
-		}, label);
-	}
-	function field(label, value, onChange, placeholder, type) {
-		return h("label", { className: "osd-field" }, h("span", { className: "osd-meta" }, label), h("input", {
-			className: "osd-input",
-			value: value || "",
-			placeholder: placeholder || "",
-			type: type || "text",
-			onChange: (e) => onChange(e.target.value)
-		}));
-	}
-	function selectField(label, value, options, onChange) {
-		return h("label", { className: "osd-field" }, h("span", { className: "osd-meta" }, label), h("select", {
-			className: "osd-select",
-			value: value || "",
-			onChange: (e) => onChange(e.target.value)
-		}, options.map((o) => h("option", {
-			key: o.value,
-			value: o.value
-		}, o.label))));
-	}
-	function App() {
-		const [tab, setTab] = React.useState("tasks");
-		const [images, setImages] = React.useState([]);
-		const [tasks, setTasks] = React.useState([]);
-		const [servers, setServers] = React.useState([]);
-		const [error, setError] = React.useState("");
-		const [msg, setMsg] = React.useState("");
-		const [busy, setBusy] = React.useState(false);
-		const [selectedTaskId, setSelectedTaskId] = React.useState(null);
-		const [svc, setSvc] = React.useState({
-			running: false,
-			port: 0,
-			imageCount: 0,
-			taskCount: 0
-		});
-		const [svcBusy, setSvcBusy] = React.useState(false);
-		const [form, setForm] = React.useState({
-			imageId: "",
-			vendor: "",
-			components: ["core"],
-			bmcHost: "",
-			bmcUser: "Administrator",
-			bmcPassword: "",
-			nicMac: "",
-			hostname: "",
-			osIp: "",
-			osGateway: "",
-			osPrefixLen: "24",
-			osDns: "114.114.114.114",
-			rootPassword: "",
-			diskSn: "",
-			useServerManager: false,
-			selectedServerIds: []
-		});
-		const [components, setComponents] = React.useState([]);
-		const [probeResult, setProbeResult] = React.useState(null);
-		React.useEffect(() => {
-			let alive = true;
-			async function run() {
+		function apply(ctx) {
+			ctx.effect(() => {
+				const style = document.createElement("style");
+				style.textContent = CSS;
+				document.head.appendChild(style);
+				return () => style.remove();
+			});
+			const h = react.createElement;
+			const remote = ctx.remote.osDeploy;
+			function fmt(ts) {
+				if (!ts) return "—";
 				try {
-					const st = await remote.serviceStatus();
-					if (alive) setSvc(st || { running: false });
-					const [img, tsk, srv] = await Promise.all([
-						remote.listImages(),
-						remote.listTasks(),
-						remote.listServers()
-					]);
-					if (alive) {
-						setImages(img.images || []);
-						setTasks(tsk.tasks || []);
-						setServers(srv.servers || []);
-						setError("");
-					}
+					return new Date(ts).toLocaleString();
 				} catch (e) {
-					if (alive) setError(String(e?.message || e));
+					return String(ts);
 				}
 			}
-			run();
-			const timer = setInterval(run, 5e3);
-			return () => {
-				alive = false;
-				clearInterval(timer);
-			};
-		}, []);
-		React.useEffect(() => {
-			if (!form.vendor) {
-				setComponents([]);
-				return;
+			function btn(label, onClick, cls, disabled) {
+				return h("button", {
+					className: "osd-btn" + (cls ? " " + cls : ""),
+					onClick,
+					disabled: !!disabled
+				}, label);
 			}
-			remote.listComponents({ vendor: form.vendor }).then((r) => setComponents(r.components || [])).catch(() => setComponents([]));
-		}, [form.vendor]);
-		function setF(k) {
-			return (v) => setForm((f) => ({
-				...f,
-				[k]: v
-			}));
-		}
-		async function doRegisterIso() {
-			setBusy(true);
-			setMsg("");
-			try {
-				const r = await remote.registerIso({
-					name: form.isoName || "",
-					vendor: form.vendor,
-					isoPath: form.isoPath
-				});
-				setMsg(r.ok ? "镜像注册成功" : `注册失败: ${r.error}`);
-				if (r.ok) setForm((f) => ({
-					...f,
-					isoPath: "",
-					isoName: ""
+			function field(label, value, onChange, placeholder, type) {
+				return h("label", { className: "osd-field" }, h("span", { className: "osd-meta" }, label), h("input", {
+					className: "osd-input",
+					value: value || "",
+					placeholder: placeholder || "",
+					type: type || "text",
+					onChange: (e) => onChange(e.target.value)
 				}));
-			} catch (e) {
-				setMsg("注册失败: " + String(e?.message || e));
-			} finally {
-				setBusy(false);
 			}
-		}
-		async function doExtract(imgId) {
-			setBusy(true);
-			setMsg("");
-			try {
-				const r = await remote.extractImage({ imageId: imgId });
-				setMsg(r.ok ? "解包完成" : `解包失败: ${r.error}`);
-			} catch (e) {
-				setMsg("解包失败: " + String(e?.message || e));
-			} finally {
-				setBusy(false);
+			function selectField(label, value, options, onChange) {
+				return h("label", { className: "osd-field" }, h("span", { className: "osd-meta" }, label), h("select", {
+					className: "osd-select",
+					value: value || "",
+					onChange: (e) => onChange(e.target.value)
+				}, options.map((o) => h("option", {
+					key: o.value,
+					value: o.value
+				}, o.label))));
 			}
-		}
-		async function doDeleteImage(imgId) {
-			try {
-				const r = await remote.deleteImage({ imageId: imgId });
-				setMsg(r.ok ? "已删除" : `删除失败: ${r.error}`);
-			} catch (e) {
-				setMsg("删除失败: " + String(e?.message || e));
-			}
-		}
-		async function doProbe() {
-			setBusy(true);
-			setProbeResult(null);
-			setMsg("");
-			try {
-				const r = await remote.probeDevice({
-					bmcHost: form.bmcHost,
-					bmcUser: form.bmcUser,
-					bmcPassword: form.bmcPassword
+			function App() {
+				const [tab, setTab] = react.useState("tasks");
+				const [images, setImages] = react.useState([]);
+				const [tasks, setTasks] = react.useState([]);
+				const [servers, setServers] = react.useState([]);
+				const [error, setError] = react.useState("");
+				const [msg, setMsg] = react.useState("");
+				const [busy, setBusy] = react.useState(false);
+				const [selectedTaskId, setSelectedTaskId] = react.useState(null);
+				const [svc, setSvc] = react.useState({
+					running: false,
+					port: 0,
+					imageCount: 0,
+					taskCount: 0
 				});
-				setProbeResult(r);
-				if (r.ok && r.nicMac) setForm((f) => ({
-					...f,
-					nicMac: r.nicMac
-				}));
-				if (r.ok && r.disks && r.disks.length === 1) setForm((f) => ({
-					...f,
-					diskSn: r.disks[0].serial
-				}));
-			} catch (e) {
-				setProbeResult({
-					ok: false,
-					error: String(e?.message || e)
+				const [svcBusy, setSvcBusy] = react.useState(false);
+				const [form, setForm] = react.useState({
+					imageId: "",
+					vendor: "",
+					components: ["core"],
+					bmcHost: "",
+					bmcUser: "Administrator",
+					bmcPassword: "",
+					nicMac: "",
+					hostname: "",
+					osIp: "",
+					osGateway: "",
+					osPrefixLen: "24",
+					osDns: "114.114.114.114",
+					rootPassword: "",
+					diskSn: "",
+					useServerManager: false,
+					selectedServerIds: []
 				});
-			} finally {
-				setBusy(false);
-			}
-		}
-		async function doCreateTask() {
-			setBusy(true);
-			setMsg("");
-			try {
-				let devices = [];
-				if (form.useServerManager && form.selectedServerIds.length > 0) for (const sid of form.selectedServerIds) {
-					const srv = servers.find((s) => s.id === sid);
-					if (!srv) continue;
-					devices.push({
-						id: srv.id,
-						bmcHost: srv.bmcHost || form.bmcHost,
-						bmcUser: srv.bmcUser || form.bmcUser,
-						bmcPassword: form.bmcPassword,
-						nicMac: form.nicMac,
-						hostname: form.hostname || srv.name,
-						osIp: form.osIp,
-						osGateway: form.osGateway,
-						osPrefixLen: parseInt(form.osPrefixLen) || 24,
-						osDns: form.osDns.split(",").map((s) => s.trim()).filter(Boolean),
-						rootPassword: form.rootPassword,
-						diskSn: form.diskSn,
-						sshUser: srv.sshUser,
-						label: srv.name
-					});
+				const [components, setComponents] = react.useState([]);
+				const [probeResult, setProbeResult] = react.useState(null);
+				react.useEffect(() => {
+					let alive = true;
+					async function run() {
+						try {
+							const st = await remote.serviceStatus();
+							if (alive) setSvc(st || { running: false });
+							const [img, tsk, srv] = await Promise.all([
+								remote.listImages(),
+								remote.listTasks(),
+								remote.listServers()
+							]);
+							if (alive) {
+								setImages(img.images || []);
+								setTasks(tsk.tasks || []);
+								setServers(srv.servers || []);
+								setError("");
+							}
+						} catch (e) {
+							if (alive) setError(String(e?.message || e));
+						}
+					}
+					run();
+					const timer = setInterval(run, 5e3);
+					return () => {
+						alive = false;
+						clearInterval(timer);
+					};
+				}, []);
+				react.useEffect(() => {
+					if (!form.vendor) {
+						setComponents([]);
+						return;
+					}
+					remote.listComponents({ vendor: form.vendor }).then((r) => setComponents(r.components || [])).catch(() => setComponents([]));
+				}, [form.vendor]);
+				function setF(k) {
+					return (v) => setForm((f) => ({
+						...f,
+						[k]: v
+					}));
 				}
-				else devices.push({
-					id: "manual_" + Date.now(),
-					bmcHost: form.bmcHost,
-					bmcUser: form.bmcUser,
-					bmcPassword: form.bmcPassword,
-					nicMac: form.nicMac,
-					hostname: form.hostname,
-					osIp: form.osIp,
-					osGateway: form.osGateway,
-					osPrefixLen: parseInt(form.osPrefixLen) || 24,
-					osDns: form.osDns.split(",").map((s) => s.trim()).filter(Boolean),
-					rootPassword: form.rootPassword,
-					diskSn: form.diskSn,
-					label: form.hostname || form.bmcHost
-				});
-				if (devices.length === 0) {
-					setMsg("请至少添加一个设备");
-					return;
+				async function doRegisterIso() {
+					setBusy(true);
+					setMsg("");
+					try {
+						const r = await remote.registerIso({
+							name: form.isoName || "",
+							vendor: form.vendor,
+							isoPath: form.isoPath
+						});
+						setMsg(r.ok ? "镜像注册成功" : `注册失败: ${r.error}`);
+						if (r.ok) setForm((f) => ({
+							...f,
+							isoPath: "",
+							isoName: ""
+						}));
+					} catch (e) {
+						setMsg("注册失败: " + String(e?.message || e));
+					} finally {
+						setBusy(false);
+					}
 				}
-				const r = await remote.createTask({
-					imageId: form.imageId,
-					devices,
-					components: form.components
-				});
-				setMsg(r.ok ? `已创建 ${r.taskIds.length} 个安装任务` : `创建失败: ${r.error}`);
-				if (r.ok) setTab("tasks");
-			} catch (e) {
-				setMsg("创建失败: " + String(e?.message || e));
-			} finally {
-				setBusy(false);
+				async function doExtract(imgId) {
+					setBusy(true);
+					setMsg("");
+					try {
+						const r = await remote.extractImage({ imageId: imgId });
+						setMsg(r.ok ? "解包完成" : `解包失败: ${r.error}`);
+					} catch (e) {
+						setMsg("解包失败: " + String(e?.message || e));
+					} finally {
+						setBusy(false);
+					}
+				}
+				async function doDeleteImage(imgId) {
+					try {
+						const r = await remote.deleteImage({ imageId: imgId });
+						setMsg(r.ok ? "已删除" : `删除失败: ${r.error}`);
+					} catch (e) {
+						setMsg("删除失败: " + String(e?.message || e));
+					}
+				}
+				async function doProbe() {
+					setBusy(true);
+					setProbeResult(null);
+					setMsg("");
+					try {
+						const r = await remote.probeDevice({
+							bmcHost: form.bmcHost,
+							bmcUser: form.bmcUser,
+							bmcPassword: form.bmcPassword
+						});
+						setProbeResult(r);
+						if (r.ok && r.nicMac) setForm((f) => ({
+							...f,
+							nicMac: r.nicMac
+						}));
+						if (r.ok && r.disks && r.disks.length === 1) setForm((f) => ({
+							...f,
+							diskSn: r.disks[0].serial
+						}));
+					} catch (e) {
+						setProbeResult({
+							ok: false,
+							error: String(e?.message || e)
+						});
+					} finally {
+						setBusy(false);
+					}
+				}
+				async function doCreateTask() {
+					setBusy(true);
+					setMsg("");
+					try {
+						let devices = [];
+						if (form.useServerManager && form.selectedServerIds.length > 0) for (const sid of form.selectedServerIds) {
+							const srv = servers.find((s) => s.id === sid);
+							if (!srv) continue;
+							devices.push({
+								id: srv.id,
+								bmcHost: srv.bmcHost || form.bmcHost,
+								bmcUser: srv.bmcUser || form.bmcUser,
+								bmcPassword: form.bmcPassword,
+								nicMac: form.nicMac,
+								hostname: form.hostname || srv.name,
+								osIp: form.osIp,
+								osGateway: form.osGateway,
+								osPrefixLen: parseInt(form.osPrefixLen) || 24,
+								osDns: form.osDns.split(",").map((s) => s.trim()).filter(Boolean),
+								rootPassword: form.rootPassword,
+								diskSn: form.diskSn,
+								sshUser: srv.sshUser,
+								label: srv.name
+							});
+						}
+						else devices.push({
+							id: "manual_" + Date.now(),
+							bmcHost: form.bmcHost,
+							bmcUser: form.bmcUser,
+							bmcPassword: form.bmcPassword,
+							nicMac: form.nicMac,
+							hostname: form.hostname,
+							osIp: form.osIp,
+							osGateway: form.osGateway,
+							osPrefixLen: parseInt(form.osPrefixLen) || 24,
+							osDns: form.osDns.split(",").map((s) => s.trim()).filter(Boolean),
+							rootPassword: form.rootPassword,
+							diskSn: form.diskSn,
+							label: form.hostname || form.bmcHost
+						});
+						if (devices.length === 0) {
+							setMsg("请至少添加一个设备");
+							return;
+						}
+						const r = await remote.createTask({
+							imageId: form.imageId,
+							devices,
+							components: form.components
+						});
+						setMsg(r.ok ? `已创建 ${r.taskIds.length} 个安装任务` : `创建失败: ${r.error}`);
+						if (r.ok) setTab("tasks");
+					} catch (e) {
+						setMsg("创建失败: " + String(e?.message || e));
+					} finally {
+						setBusy(false);
+					}
+				}
+				async function doCancelTask(id) {
+					try {
+						await remote.cancelTask({ taskId: id });
+					} catch (e) {
+						setMsg("取消失败: " + String(e?.message || e));
+					}
+				}
+				async function doDeleteTask(id) {
+					try {
+						await remote.deleteTask({ taskId: id });
+					} catch (e) {
+						setMsg("删除失败: " + String(e?.message || e));
+					}
+				}
+				async function doSvcStart() {
+					setSvcBusy(true);
+					setMsg("");
+					try {
+						const r = await remote.serviceStart();
+						if (r.ok) {
+							setSvc(r.status);
+							setMsg("部署服务已启动（HTTP 软件源 + 任务队列）");
+						} else setMsg("启动失败: " + (r.error || "未知错误"));
+					} catch (e) {
+						setMsg("启动失败: " + String(e?.message || e));
+					} finally {
+						setSvcBusy(false);
+					}
+				}
+				async function doSvcStop() {
+					setSvcBusy(true);
+					setMsg("");
+					try {
+						const r = await remote.serviceStop();
+						if (r.ok) {
+							setSvc(r.status);
+							setMsg("部署服务已停止（排队/运行中的任务将终止）");
+						} else setMsg("停止失败: " + (r.error || "未知错误"));
+					} catch (e) {
+						setMsg("停止失败: " + String(e?.message || e));
+					} finally {
+						setSvcBusy(false);
+					}
+				}
+				async function doSvcRestart() {
+					setSvcBusy(true);
+					setMsg("");
+					try {
+						const r = await remote.serviceRestart();
+						if (r.ok) {
+							setSvc(r.status);
+							setMsg("部署服务已重启");
+						} else setMsg("重启失败: " + (r.error || "未知错误"));
+					} catch (e) {
+						setMsg("重启失败: " + String(e?.message || e));
+					} finally {
+						setSvcBusy(false);
+					}
+				}
+				const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : null;
+				return h("div", { className: "osd-wrap" }, h("div", { className: "osd-card" }, h("div", { className: "osd-row" }, h("span", { className: "osd-dot " + (svc.running ? "osd-running" : "osd-off") }), h("span", { className: "osd-name" }, svc.running ? "部署服务运行中" : "部署服务已停止"), svc.running ? h("span", { className: "osd-meta" }, `端口 ${svc.port} · 启动于 ${fmt(svc.startedAt)} · 镜像 ${svc.imageCount} · 任务 ${svc.taskCount}`) : h("span", { className: "osd-meta" }, "不影响 DSH 启动速度"), btn("启动", doSvcStart, "osd-btn-primary", svcBusy || svc.running), btn("停止", doSvcStop, "osd-btn-danger", svcBusy || !svc.running), btn("重启", doSvcRestart, "", svcBusy || !svc.running), svcBusy && h("span", { className: "osd-meta" }, "处理中...")), !svc.running && h("span", { className: "osd-meta" }, "部署服务默认不启动：点击「启动」后才会开启 HTTP 软件源与安装任务队列；创建安装任务需先启动服务。")), h("div", { className: "osd-tabs" }, h("div", {
+					className: "osd-tab" + (tab === "tasks" ? " osd-tab-active" : ""),
+					onClick: () => setTab("tasks")
+				}, `安装任务 (${tasks.length})`), h("div", {
+					className: "osd-tab" + (tab === "images" ? " osd-tab-active" : ""),
+					onClick: () => setTab("images")
+				}, `镜像管理 (${images.length})`), h("div", {
+					className: "osd-tab" + (tab === "create" ? " osd-tab-active" : ""),
+					onClick: () => setTab("create")
+				}, "创建安装任务")), error && h("div", { style: {
+					color: "#e5484d",
+					fontSize: 12
+				} }, error), msg && h("div", { style: {
+					color: "#30a46c",
+					fontSize: 12
+				} }, msg), tab === "tasks" && h(react.Fragment, null, h("div", { className: "osd-bar" }, btn("刷新", () => setMsg("")), h("span", { className: "osd-meta" }, "每 5 秒自动刷新")), tasks.length === 0 && h("div", { className: "osd-card" }, h("span", { className: "osd-meta" }, "暂无安装任务。点击「创建安装任务」开始。")), h("div", { className: "osd-grid" }, tasks.map((t) => h("div", {
+					key: t.id,
+					className: "osd-device-card" + (selectedTaskId === t.id ? " osd-device-selected" : ""),
+					onClick: () => setSelectedTaskId(selectedTaskId === t.id ? null : t.id)
+				}, h("div", { className: "osd-row" }, h("span", { className: `osd-dot osd-${t.status}` }), h("span", { className: "osd-name" }, t.device?.hostname || t.device?.bmcHost || "unknown"), h("span", { className: "osd-badge" }, t.status)), h("div", { className: "osd-kv" }, `BMC: ${t.device?.bmcHost} → OS: ${t.device?.osIp}`), h("div", { className: "osd-kv" }, `阶段: ${t.stage} · 进度: ${t.progress}%`), h("div", { className: "osd-progress" }, h("div", {
+					className: `osd-progress-bar osd-progress-${t.status}`,
+					style: { width: `${t.progress}%` }
+				})), h("div", { className: "osd-kv" }, `创建: ${fmt(t.createdAt)}${t.finishedAt ? " · 完成: " + fmt(t.finishedAt) : ""}`), t.error && h("div", { style: {
+					color: "#e5484d",
+					fontSize: 12
+				} }, t.error), h("div", { className: "osd-row" }, (t.status === "running" || t.status === "queued") && btn("取消", (e) => {
+					e.stopPropagation();
+					doCancelTask(t.id);
+				}, "osd-btn-danger"), (t.status === "success" || t.status === "failed" || t.status === "cancelled") && btn("删除", (e) => {
+					e.stopPropagation();
+					doDeleteTask(t.id);
+				}, "osd-btn-danger"))))), selectedTask && h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, `任务详情: ${selectedTask.device?.hostname || selectedTask.device?.bmcHost}`), h("div", { className: "osd-kv" }, `镜像: ${images.find((i) => i.id === selectedTask.imageId)?.name || selectedTask.imageId} · `, `组件: ${selectedTask.components?.join(", ")} · `, `BMC: ${selectedTask.device?.bmcHost} · `, `目标 IP: ${selectedTask.device?.osIp}`), selectedTask.device?.diskSn && h("div", { className: "osd-kv" }, `目标磁盘 SN: ${selectedTask.device.diskSn}`), h("div", { className: "osd-h" }, "安装日志（实时）"), h("div", { className: "osd-log" }, (selectedTask.logs || []).map((l, i) => h("div", {
+					key: i,
+					className: `osd-log-${l.level}`
+				}, `[${new Date(l.ts).toLocaleTimeString()}] ${l.msg}`)), selectedTask.status === "running" && h("div", { className: "osd-log-info" }, "— 等待更多日志... —")))), tab === "images" && h(react.Fragment, null, h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "注册新镜像"), h("div", { className: "osd-row" }, field("镜像名称", form.isoName || "", setF("isoName"), "如 openEuler-22.03-SP4"), selectField("厂家", form.vendor, [
+					{
+						value: "",
+						label: "— 选择 —"
+					},
+					{
+						value: "openEuler",
+						label: "openEuler"
+					},
+					{
+						value: "kylin",
+						label: "麒麟 V10"
+					},
+					{
+						value: "debian",
+						label: "Debian"
+					}
+				], setF("vendor"))), h("div", { className: "osd-row" }, field("ISO 文件路径", form.isoPath || "", setF("isoPath"), "E:\\path\\to\\image.iso"), btn("注册", doRegisterIso, "osd-btn-primary", busy || !form.isoPath || !form.vendor))), h("div", { className: "osd-h" }, `已注册镜像 (${images.length})`), images.map((img) => h("div", {
+					key: img.id,
+					className: "osd-card"
+				}, h("div", { className: "osd-row" }, h("span", { className: "osd-name" }, img.name), h("span", { className: "osd-badge" }, img.vendor), img.extracted ? h("span", {
+					className: "osd-badge",
+					style: { color: "#30a46c" }
+				}, "已解包") : h("span", { className: "osd-badge" }, "未解包")), h("div", { className: "osd-kv" }, `路径: ${img.isoPath}`), h("div", { className: "osd-kv" }, `大小: ${(img.sizeBytes / 1073741824).toFixed(2)} GB · 注册: ${fmt(img.registeredAt)}`), h("div", { className: "osd-row" }, !img.extracted && btn("解包", () => doExtract(img.id), "osd-btn-primary", busy), btn("删除", () => doDeleteImage(img.id), "osd-btn-danger"))))), tab === "create" && h(react.Fragment, null, h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "1. 选择镜像"), selectField("安装镜像", form.imageId, [{
+					value: "",
+					label: images.length === 0 ? "请先注册镜像" : "— 选择 —"
+				}, ...images.filter((i) => i.extracted).map((i) => ({
+					value: i.id,
+					label: `${i.name} (${i.vendor})`
+				}))], setF("imageId"))), form.imageId && h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "2. 安装组件"), h("div", { className: "osd-row" }, components.map((c) => h("div", {
+					key: c.id,
+					className: "osd-chip" + (form.components.includes(c.id) ? " osd-chip-on" : ""),
+					onClick: () => setForm((f) => ({
+						...f,
+						components: f.components.includes(c.id) ? f.components.filter((x) => x !== c.id) : [...f.components, c.id]
+					}))
+				}, c.name))), h("div", { className: "osd-meta" }, components.filter((c) => form.components.includes(c.id)).map((c) => c.description).join(" · "))), h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "3. 设备信息"), servers.length > 0 && h("div", { className: "osd-row" }, h("label", { className: "osd-chip" + (form.useServerManager ? " osd-chip-on" : "") }, h("input", {
+					type: "checkbox",
+					checked: form.useServerManager,
+					onChange: (e) => setForm((f) => ({
+						...f,
+						useServerManager: e.target.checked
+					}))
+				}), " 从服务器管理选择")), form.useServerManager ? h("div", { className: "osd-grid" }, servers.map((s) => h("div", {
+					key: s.id,
+					className: "osd-device-card" + (form.selectedServerIds.includes(s.id) ? " osd-device-selected" : ""),
+					onClick: () => setForm((f) => ({
+						...f,
+						selectedServerIds: f.selectedServerIds.includes(s.id) ? f.selectedServerIds.filter((x) => x !== s.id) : [...f.selectedServerIds, s.id]
+					}))
+				}, h("span", { className: "osd-name" }, s.name), h("span", { className: "osd-kv" }, `SSH: ${s.host} · BMC: ${s.bmcHost || "N/A"}`)))) : h(react.Fragment, null, h("div", { className: "osd-row" }, field("BMC 地址", form.bmcHost, setF("bmcHost"), "192.168.1.10"), field("BMC 用户", form.bmcUser, setF("bmcUser"), "Administrator"), field("BMC 密码", form.bmcPassword, setF("bmcPassword"), "", "password"), btn("探测设备", doProbe, "", busy || !form.bmcHost || !form.bmcUser || !form.bmcPassword)), probeResult && h("div", {
+					className: "osd-kv",
+					style: { color: probeResult.ok ? "#30a46c" : "#e5484d" }
+				}, probeResult.ok ? `型号: ${probeResult.model} · SN: ${probeResult.serial} · 电源: ${probeResult.powerState} · NIC: ${probeResult.nicMac}` : `探测失败: ${probeResult.error}`), probeResult?.ok && probeResult.disks && probeResult.disks.length > 0 && h("div", { className: "osd-kv" }, "磁盘: ", probeResult.disks.map((d) => `${d.serial} (${(d.capacityBytes / 1e9).toFixed(0)}GB ${d.media})`).join(" | ")))), h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "4. OS 配置"), h("div", { className: "osd-row" }, field("root 密码", form.rootPassword, setF("rootPassword"), "", "password"), field("主机名", form.hostname, setF("hostname"), "server-01")), h("div", { className: "osd-row" }, field("OS IP", form.osIp, setF("osIp"), "192.168.1.100"), field("网关", form.osGateway, setF("osGateway"), "192.168.1.1"), field("子网掩码位数", form.osPrefixLen, setF("osPrefixLen"), "24"), field("DNS", form.osDns, setF("osDns"), "114.114.114.114")), h("div", { className: "osd-row" }, field("业务网卡 MAC", form.nicMac, setF("nicMac"), "aa:bb:cc:dd:ee:ff"), probeResult?.disks && probeResult.disks.length > 0 && selectField("目标磁盘", form.diskSn, probeResult.disks.map((d) => ({
+					value: d.serial,
+					label: `${d.serial} (${(d.capacityBytes / 1e9).toFixed(0)}GB)`
+				})), setF("diskSn"))), h("div", { className: "osd-meta" }, "注意：安装会清空目标磁盘上的所有数据！")), h("div", { className: "osd-row" }, btn("创建安装任务", doCreateTask, "osd-btn-primary", busy || !svc.running || !form.imageId || !form.rootPassword || !form.useServerManager && !form.bmcHost), !svc.running && h("span", {
+					className: "osd-meta",
+					style: { color: "#f5c542" }
+				}, "需先启动部署服务"), busy && h("span", { className: "osd-meta" }, "处理中..."))));
 			}
+			ctx.slots.inject("settings.section", () => ctx.slots.register({
+				name: "settings.section",
+				id: "os-deploy",
+				order: 51,
+				label: "OS 部署"
+			}, () => h(App)));
 		}
-		async function doCancelTask(id) {
-			try {
-				await remote.cancelTask({ taskId: id });
-			} catch (e) {
-				setMsg("取消失败: " + String(e?.message || e));
-			}
-		}
-		async function doDeleteTask(id) {
-			try {
-				await remote.deleteTask({ taskId: id });
-			} catch (e) {
-				setMsg("删除失败: " + String(e?.message || e));
-			}
-		}
-		async function doSvcStart() {
-			setSvcBusy(true);
-			setMsg("");
-			try {
-				const r = await remote.serviceStart();
-				if (r.ok) {
-					setSvc(r.status);
-					setMsg("部署服务已启动（HTTP 软件源 + 任务队列）");
-				} else setMsg("启动失败: " + (r.error || "未知错误"));
-			} catch (e) {
-				setMsg("启动失败: " + String(e?.message || e));
-			} finally {
-				setSvcBusy(false);
-			}
-		}
-		async function doSvcStop() {
-			setSvcBusy(true);
-			setMsg("");
-			try {
-				const r = await remote.serviceStop();
-				if (r.ok) {
-					setSvc(r.status);
-					setMsg("部署服务已停止（排队/运行中的任务将终止）");
-				} else setMsg("停止失败: " + (r.error || "未知错误"));
-			} catch (e) {
-				setMsg("停止失败: " + String(e?.message || e));
-			} finally {
-				setSvcBusy(false);
-			}
-		}
-		async function doSvcRestart() {
-			setSvcBusy(true);
-			setMsg("");
-			try {
-				const r = await remote.serviceRestart();
-				if (r.ok) {
-					setSvc(r.status);
-					setMsg("部署服务已重启");
-				} else setMsg("重启失败: " + (r.error || "未知错误"));
-			} catch (e) {
-				setMsg("重启失败: " + String(e?.message || e));
-			} finally {
-				setSvcBusy(false);
-			}
-		}
-		const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : null;
-		return h("div", { className: "osd-wrap" }, h("div", { className: "osd-card" }, h("div", { className: "osd-row" }, h("span", { className: "osd-dot " + (svc.running ? "osd-running" : "osd-off") }), h("span", { className: "osd-name" }, svc.running ? "部署服务运行中" : "部署服务已停止"), svc.running ? h("span", { className: "osd-meta" }, `端口 ${svc.port} · 启动于 ${fmt(svc.startedAt)} · 镜像 ${svc.imageCount} · 任务 ${svc.taskCount}`) : h("span", { className: "osd-meta" }, "不影响 DSH 启动速度"), btn("启动", doSvcStart, "osd-btn-primary", svcBusy || svc.running), btn("停止", doSvcStop, "osd-btn-danger", svcBusy || !svc.running), btn("重启", doSvcRestart, "", svcBusy || !svc.running), svcBusy && h("span", { className: "osd-meta" }, "处理中...")), !svc.running && h("span", { className: "osd-meta" }, "部署服务默认不启动：点击「启动」后才会开启 HTTP 软件源与安装任务队列；创建安装任务需先启动服务。")), h("div", { className: "osd-tabs" }, h("div", {
-			className: "osd-tab" + (tab === "tasks" ? " osd-tab-active" : ""),
-			onClick: () => setTab("tasks")
-		}, `安装任务 (${tasks.length})`), h("div", {
-			className: "osd-tab" + (tab === "images" ? " osd-tab-active" : ""),
-			onClick: () => setTab("images")
-		}, `镜像管理 (${images.length})`), h("div", {
-			className: "osd-tab" + (tab === "create" ? " osd-tab-active" : ""),
-			onClick: () => setTab("create")
-		}, "创建安装任务")), error && h("div", { style: {
-			color: "#e5484d",
-			fontSize: 12
-		} }, error), msg && h("div", { style: {
-			color: "#30a46c",
-			fontSize: 12
-		} }, msg), tab === "tasks" && h(React.Fragment, null, h("div", { className: "osd-bar" }, btn("刷新", () => setMsg("")), h("span", { className: "osd-meta" }, "每 5 秒自动刷新")), tasks.length === 0 && h("div", { className: "osd-card" }, h("span", { className: "osd-meta" }, "暂无安装任务。点击「创建安装任务」开始。")), h("div", { className: "osd-grid" }, tasks.map((t) => h("div", {
-			key: t.id,
-			className: "osd-device-card" + (selectedTaskId === t.id ? " osd-device-selected" : ""),
-			onClick: () => setSelectedTaskId(selectedTaskId === t.id ? null : t.id)
-		}, h("div", { className: "osd-row" }, h("span", { className: `osd-dot osd-${t.status}` }), h("span", { className: "osd-name" }, t.device?.hostname || t.device?.bmcHost || "unknown"), h("span", { className: "osd-badge" }, t.status)), h("div", { className: "osd-kv" }, `BMC: ${t.device?.bmcHost} → OS: ${t.device?.osIp}`), h("div", { className: "osd-kv" }, `阶段: ${t.stage} · 进度: ${t.progress}%`), h("div", { className: "osd-progress" }, h("div", {
-			className: `osd-progress-bar osd-progress-${t.status}`,
-			style: { width: `${t.progress}%` }
-		})), h("div", { className: "osd-kv" }, `创建: ${fmt(t.createdAt)}${t.finishedAt ? " · 完成: " + fmt(t.finishedAt) : ""}`), t.error && h("div", { style: {
-			color: "#e5484d",
-			fontSize: 12
-		} }, t.error), h("div", { className: "osd-row" }, (t.status === "running" || t.status === "queued") && btn("取消", (e) => {
-			e.stopPropagation();
-			doCancelTask(t.id);
-		}, "osd-btn-danger"), (t.status === "success" || t.status === "failed" || t.status === "cancelled") && btn("删除", (e) => {
-			e.stopPropagation();
-			doDeleteTask(t.id);
-		}, "osd-btn-danger"))))), selectedTask && h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, `任务详情: ${selectedTask.device?.hostname || selectedTask.device?.bmcHost}`), h("div", { className: "osd-kv" }, `镜像: ${images.find((i) => i.id === selectedTask.imageId)?.name || selectedTask.imageId} · `, `组件: ${selectedTask.components?.join(", ")} · `, `BMC: ${selectedTask.device?.bmcHost} · `, `目标 IP: ${selectedTask.device?.osIp}`), selectedTask.device?.diskSn && h("div", { className: "osd-kv" }, `目标磁盘 SN: ${selectedTask.device.diskSn}`), h("div", { className: "osd-h" }, "安装日志（实时）"), h("div", { className: "osd-log" }, (selectedTask.logs || []).map((l, i) => h("div", {
-			key: i,
-			className: `osd-log-${l.level}`
-		}, `[${new Date(l.ts).toLocaleTimeString()}] ${l.msg}`)), selectedTask.status === "running" && h("div", { className: "osd-log-info" }, "— 等待更多日志... —")))), tab === "images" && h(React.Fragment, null, h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "注册新镜像"), h("div", { className: "osd-row" }, field("镜像名称", form.isoName || "", setF("isoName"), "如 openEuler-22.03-SP4"), selectField("厂家", form.vendor, [
-			{
-				value: "",
-				label: "— 选择 —"
-			},
-			{
-				value: "openEuler",
-				label: "openEuler"
-			},
-			{
-				value: "kylin",
-				label: "麒麟 V10"
-			},
-			{
-				value: "debian",
-				label: "Debian"
-			}
-		], setF("vendor"))), h("div", { className: "osd-row" }, field("ISO 文件路径", form.isoPath || "", setF("isoPath"), "E:\\path\\to\\image.iso"), btn("注册", doRegisterIso, "osd-btn-primary", busy || !form.isoPath || !form.vendor))), h("div", { className: "osd-h" }, `已注册镜像 (${images.length})`), images.map((img) => h("div", {
-			key: img.id,
-			className: "osd-card"
-		}, h("div", { className: "osd-row" }, h("span", { className: "osd-name" }, img.name), h("span", { className: "osd-badge" }, img.vendor), img.extracted ? h("span", {
-			className: "osd-badge",
-			style: { color: "#30a46c" }
-		}, "已解包") : h("span", { className: "osd-badge" }, "未解包")), h("div", { className: "osd-kv" }, `路径: ${img.isoPath}`), h("div", { className: "osd-kv" }, `大小: ${(img.sizeBytes / 1073741824).toFixed(2)} GB · 注册: ${fmt(img.registeredAt)}`), h("div", { className: "osd-row" }, !img.extracted && btn("解包", () => doExtract(img.id), "osd-btn-primary", busy), btn("删除", () => doDeleteImage(img.id), "osd-btn-danger"))))), tab === "create" && h(React.Fragment, null, h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "1. 选择镜像"), selectField("安装镜像", form.imageId, [{
-			value: "",
-			label: images.length === 0 ? "请先注册镜像" : "— 选择 —"
-		}, ...images.filter((i) => i.extracted).map((i) => ({
-			value: i.id,
-			label: `${i.name} (${i.vendor})`
-		}))], setF("imageId"))), form.imageId && h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "2. 安装组件"), h("div", { className: "osd-row" }, components.map((c) => h("div", {
-			key: c.id,
-			className: "osd-chip" + (form.components.includes(c.id) ? " osd-chip-on" : ""),
-			onClick: () => setForm((f) => ({
-				...f,
-				components: f.components.includes(c.id) ? f.components.filter((x) => x !== c.id) : [...f.components, c.id]
-			}))
-		}, c.name))), h("div", { className: "osd-meta" }, components.filter((c) => form.components.includes(c.id)).map((c) => c.description).join(" · "))), h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "3. 设备信息"), servers.length > 0 && h("div", { className: "osd-row" }, h("label", { className: "osd-chip" + (form.useServerManager ? " osd-chip-on" : "") }, h("input", {
-			type: "checkbox",
-			checked: form.useServerManager,
-			onChange: (e) => setForm((f) => ({
-				...f,
-				useServerManager: e.target.checked
-			}))
-		}), " 从服务器管理选择")), form.useServerManager ? h("div", { className: "osd-grid" }, servers.map((s) => h("div", {
-			key: s.id,
-			className: "osd-device-card" + (form.selectedServerIds.includes(s.id) ? " osd-device-selected" : ""),
-			onClick: () => setForm((f) => ({
-				...f,
-				selectedServerIds: f.selectedServerIds.includes(s.id) ? f.selectedServerIds.filter((x) => x !== s.id) : [...f.selectedServerIds, s.id]
-			}))
-		}, h("span", { className: "osd-name" }, s.name), h("span", { className: "osd-kv" }, `SSH: ${s.host} · BMC: ${s.bmcHost || "N/A"}`)))) : h(React.Fragment, null, h("div", { className: "osd-row" }, field("BMC 地址", form.bmcHost, setF("bmcHost"), "192.168.1.10"), field("BMC 用户", form.bmcUser, setF("bmcUser"), "Administrator"), field("BMC 密码", form.bmcPassword, setF("bmcPassword"), "", "password"), btn("探测设备", doProbe, "", busy || !form.bmcHost || !form.bmcUser || !form.bmcPassword)), probeResult && h("div", {
-			className: "osd-kv",
-			style: { color: probeResult.ok ? "#30a46c" : "#e5484d" }
-		}, probeResult.ok ? `型号: ${probeResult.model} · SN: ${probeResult.serial} · 电源: ${probeResult.powerState} · NIC: ${probeResult.nicMac}` : `探测失败: ${probeResult.error}`), probeResult?.ok && probeResult.disks && probeResult.disks.length > 0 && h("div", { className: "osd-kv" }, "磁盘: ", probeResult.disks.map((d) => `${d.serial} (${(d.capacityBytes / 1e9).toFixed(0)}GB ${d.media})`).join(" | ")))), h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "4. OS 配置"), h("div", { className: "osd-row" }, field("root 密码", form.rootPassword, setF("rootPassword"), "", "password"), field("主机名", form.hostname, setF("hostname"), "server-01")), h("div", { className: "osd-row" }, field("OS IP", form.osIp, setF("osIp"), "192.168.1.100"), field("网关", form.osGateway, setF("osGateway"), "192.168.1.1"), field("子网掩码位数", form.osPrefixLen, setF("osPrefixLen"), "24"), field("DNS", form.osDns, setF("osDns"), "114.114.114.114")), h("div", { className: "osd-row" }, field("业务网卡 MAC", form.nicMac, setF("nicMac"), "aa:bb:cc:dd:ee:ff"), probeResult?.disks && probeResult.disks.length > 0 && selectField("目标磁盘", form.diskSn, probeResult.disks.map((d) => ({
-			value: d.serial,
-			label: `${d.serial} (${(d.capacityBytes / 1e9).toFixed(0)}GB)`
-		})), setF("diskSn"))), h("div", { className: "osd-meta" }, "注意：安装会清空目标磁盘上的所有数据！")), h("div", { className: "osd-row" }, btn("创建安装任务", doCreateTask, "osd-btn-primary", busy || !svc.running || !form.imageId || !form.rootPassword || !form.useServerManager && !form.bmcHost), !svc.running && h("span", {
-			className: "osd-meta",
-			style: { color: "#f5c542" }
-		}, "需先启动部署服务"), busy && h("span", { className: "osd-meta" }, "处理中..."))));
+		//#endregion
+		exports.apply = apply;
+		exports.inject = inject;
+		return module.exports;
 	}
-	ctx.slots.inject("settings.section", () => ctx.slots.register({
-		name: "settings.section",
-		id: "os-deploy",
-		order: 51,
-		label: "OS 部署"
-	}, () => h(App)));
-}
-//#endregion
-export { apply, inject };
+});
