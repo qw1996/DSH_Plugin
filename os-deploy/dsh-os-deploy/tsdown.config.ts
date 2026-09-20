@@ -1,4 +1,5 @@
 import { defineConfig } from 'tsdown'
+import { typertPlugin } from '@deepseek-ai/dsh-typert-generator/tsdown'
 
 export default defineConfig({
   entry: {
@@ -11,4 +12,5 @@ export default defineConfig({
   dts: true,
   clean: true,
   fixedExtension: false,
+  plugins: [typertPlugin({ mode: 'package' })],
 })

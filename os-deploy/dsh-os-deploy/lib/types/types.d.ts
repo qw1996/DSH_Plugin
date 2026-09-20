@@ -150,5 +150,18 @@ interface DeleteImageResult {
   ok: boolean;
   error?: string;
 }
+interface ServiceStatusResult {
+  running: boolean;
+  port: number;
+  startedAt: number | null;
+  imageCount: number;
+  taskCount: number;
+  activeTaskCount: number;
+}
+interface ServiceControlResult {
+  ok: boolean;
+  status?: ServiceStatusResult;
+  error?: string;
+}
 //#endregion
-export { CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, DeployTask, DistroVendor, ExtractImageRequest, ExtractImageResult, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, InstallComponent, IsoImage, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, LogEntry, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, TargetDevice, TaskStatus };
+export { CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, DeployTask, DistroVendor, ExtractImageRequest, ExtractImageResult, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, InstallComponent, IsoImage, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, LogEntry, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, ServiceControlResult, ServiceStatusResult, TargetDevice, TaskStatus };

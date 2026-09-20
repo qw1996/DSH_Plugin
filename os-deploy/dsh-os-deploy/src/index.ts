@@ -18,6 +18,7 @@ import type {
   ExtractImageRequest, ExtractImageResult,
   DeleteImageRequest, DeleteImageResult,
   GetServerListResult,
+  ServiceStatusResult, ServiceControlResult,
 } from './types'
 import {
   RedfishClient, DeployHttpServer, DeployRunner, DeploySpec,
@@ -53,6 +54,9 @@ export default class OsDeployService extends TypertRemoteService {
 
   images: IsoImage[] = []
   tasks: Map<string, DeployTask> = new Map()
+  /** 部署服务（HTTP 仓库 + 任务队列）是否处于运行态；默认 false，避免拖慢 DSH 启动 */
+  serverRunning = false
+  serverStartedAt: number | null = null
   private httpServer: DeployHttpServer | null = null
   private runners: Map<string, DeployRunner> = new Map()
   private root: string | null = null
@@ -70,22 +74,80 @@ export default class OsDeployService extends TypertRemoteService {
   }
 
   async [Service.init]() {
-    // Start HTTP server for serving packages to targets
-    this.httpServer = new DeployHttpServer(HTTP_PORT)
-    this.httpServer.onReport((query, ip) => this.handleReport(query, ip))
-    try {
-      await this.httpServer.start()
-      console.log(`[osdeploy] HTTP server listening on 0.0.0.0:${HTTP_PORT}`)
-    } catch (e: any) {
-      console.error(`[osdeploy] HTTP server failed to start: ${e.message}`)
-    }
-    // Resume any queued tasks
-    this.processQueue()
+    // 轻量启动：只加载持久化状态。HTTP 仓库与任务队列由 serviceStart() 按需拉起，
+    // 保证 DSH 启动速度不受部署服务影响（默认不启动）。
+    console.log('[osdeploy] service loaded (idle) — 在面板点击「启动」后才会开启部署服务')
   }
 
   async [Service.dispose]() {
     if (this.httpServer) this.httpServer.stop()
     for (const [, r] of this.runners) r.cancel()
+  }
+
+  // ---------- @Remote: 服务控制 ----------
+  @Remote('serviceStatus')
+  async serviceStatus(): Promise<ServiceStatusResult> {
+    return {
+      running: this.serverRunning,
+      port: HTTP_PORT,
+      startedAt: this.serverStartedAt,
+      imageCount: this.images.length,
+      taskCount: this.tasks.size,
+      activeTaskCount: Array.from(this.tasks.values())
+        .filter(t => t.status === 'running' || t.status === 'queued').length,
+    }
+  }
+
+  @Remote('serviceStart')
+  async serviceStart(): Promise<ServiceControlResult> {
+    try {
+      if (this.serverRunning) return { ok: true, status: await this.serviceStatus() }
+      this.httpServer = new DeployHttpServer(HTTP_PORT)
+      this.httpServer.onReport((query, ip) => this.handleReport(query, ip))
+      await this.httpServer.start()
+      // 为已解包的镜像重新注册 HTTP 根
+      for (const img of this.images) {
+        if (img.extracted && img.extractedDir) this.httpServer.setRoot(`/repo/${img.distroId}`, img.extractedDir)
+      }
+      this.serverRunning = true
+      this.serverStartedAt = Date.now()
+      console.log(`[osdeploy] HTTP server listening on 0.0.0.0:${HTTP_PORT}`)
+      // 恢复队列中排队的任务
+      this.processQueue()
+      return { ok: true, status: await this.serviceStatus() }
+    } catch (e: any) {
+      this.httpServer = null
+      return { ok: false, error: String(e?.message || e) }
+    }
+  }
+
+  @Remote('serviceStop')
+  async serviceStop(): Promise<ServiceControlResult> {
+    try {
+      // 取消所有活动 runner（BMC 操作尽快停下）
+      for (const [, r] of this.runners) r.cancel()
+      this.runners.clear()
+      // 排队任务 → cancelled；运行中任务 → failed
+      for (const [, t] of this.tasks) {
+        if (t.status === 'queued') { t.status = 'cancelled'; t.finishedAt = Date.now() }
+        else if (t.status === 'running') { t.status = 'failed'; t.error = '服务已停止'; t.finishedAt = Date.now() }
+      }
+      this.queueRunning = false
+      if (this.httpServer) { this.httpServer.stop(); this.httpServer = null }
+      this.serverRunning = false
+      this.serverStartedAt = null
+      this.save()
+      console.log('[osdeploy] service stopped')
+      return { ok: true, status: await this.serviceStatus() }
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message || e) }
+    }
+  }
+
+  @Remote('serviceRestart')
+  async serviceRestart(): Promise<ServiceControlResult> {
+    await this.serviceStop()
+    return this.serviceStart()
   }
 
   // ---------- 持久化 ----------
@@ -109,7 +171,7 @@ export default class OsDeployService extends TypertRemoteService {
   }
 
   // ---------- @Remote: 镜像管理 ----------
-  @Remote()
+  @Remote('listServers')
   async listServers(): Promise<GetServerListResult> {
     // Try to get servers from server-manager plugin's inventory
     try {
@@ -130,7 +192,7 @@ export default class OsDeployService extends TypertRemoteService {
     return { servers: [] }
   }
 
-  @Remote()
+  @Remote('registerIso')
   async registerIso(req: RegisterIsoRequest): Promise<RegisterIsoResult> {
     try {
       if (!req.isoPath || !fs.existsSync(req.isoPath)) {
@@ -154,7 +216,7 @@ export default class OsDeployService extends TypertRemoteService {
     } catch (e: any) { return { ok: false, error: String(e.message || e) } }
   }
 
-  @Remote()
+  @Remote('extractImage')
   async extractImage(req: ExtractImageRequest): Promise<ExtractImageResult> {
     const img = this.images.find(i => i.id === req.imageId)
     if (!img) return { ok: false, error: 'image not found' }
@@ -172,7 +234,7 @@ export default class OsDeployService extends TypertRemoteService {
     return { ok: false, error: result.error || 'extraction failed' }
   }
 
-  @Remote()
+  @Remote('deleteImage')
   async deleteImage(req: DeleteImageRequest): Promise<DeleteImageResult> {
     const idx = this.images.findIndex(i => i.id === req.imageId)
     if (idx < 0) return { ok: false, error: 'image not found' }
@@ -183,19 +245,19 @@ export default class OsDeployService extends TypertRemoteService {
     return { ok: true }
   }
 
-  @Remote()
+  @Remote('listImages')
   async listImages(): Promise<ListImagesResult> {
     return { images: this.images }
   }
 
   // ---------- @Remote: 组件列表 ----------
-  @Remote()
+  @Remote('listComponents')
   async listComponents(req: ListComponentsRequest): Promise<ListComponentsResult> {
     return { components: COMPONENTS[req.vendor] || [] }
   }
 
   // ---------- @Remote: 设备探测 ----------
-  @Remote()
+  @Remote('probeDevice')
   async probeDevice(req: ProbeDeviceRequest): Promise<ProbeDeviceResult> {
     try {
       const rf = new RedfishClient({ host: req.bmcHost, user: req.bmcUser, pass: req.bmcPassword })
@@ -234,9 +296,10 @@ export default class OsDeployService extends TypertRemoteService {
   }
 
   // ---------- @Remote: 任务管理 ----------
-  @Remote()
+  @Remote('createTask')
   async createTask(req: CreateTaskRequest): Promise<CreateTaskResult> {
     try {
+      if (!this.serverRunning) return { ok: false, error: '部署服务未启动，请先在面板点击「启动」' }
       const img = this.images.find(i => i.id === req.imageId)
       if (!img) return { ok: false, error: 'image not found' }
       if (!req.devices || req.devices.length === 0) return { ok: false, error: 'no devices' }
@@ -259,19 +322,19 @@ export default class OsDeployService extends TypertRemoteService {
     } catch (e: any) { return { ok: false, error: String(e.message || e) } }
   }
 
-  @Remote()
+  @Remote('listTasks')
   async listTasks(): Promise<ListTasksResult> {
     return { tasks: Array.from(this.tasks.values()) }
   }
 
-  @Remote()
+  @Remote('getTaskDetail')
   async getTaskDetail(req: GetTaskDetailRequest): Promise<GetTaskDetailResult> {
     const task = this.tasks.get(req.taskId)
     if (!task) return { task: null, error: 'task not found' }
     return { task }
   }
 
-  @Remote()
+  @Remote('cancelTask')
   async cancelTask(req: CancelTaskRequest): Promise<CancelTaskResult> {
     const task = this.tasks.get(req.taskId)
     if (!task) return { ok: false, error: 'task not found' }
@@ -288,7 +351,7 @@ export default class OsDeployService extends TypertRemoteService {
     return { ok: true }
   }
 
-  @Remote()
+  @Remote('deleteTask')
   async deleteTask(req: DeleteTaskRequest): Promise<DeleteTaskResult> {
     const task = this.tasks.get(req.taskId)
     if (!task) return { ok: false, error: 'task not found' }

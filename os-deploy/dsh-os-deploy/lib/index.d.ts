@@ -1,4 +1,4 @@
-import { CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, DeployTask, ExtractImageRequest, ExtractImageResult, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, IsoImage, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult } from "./types/types.js";
+import { CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, DeployTask, ExtractImageRequest, ExtractImageResult, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, IsoImage, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, ServiceControlResult, ServiceStatusResult } from "./types/types.js";
 import { Service } from "@deepseek-ai/cordis";
 import { TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 //#region src/index.d.ts
@@ -7,6 +7,9 @@ declare class OsDeployService extends TypertRemoteService {
   static inject: string[];
   images: IsoImage[];
   tasks: Map<string, DeployTask>;
+  /** 部署服务（HTTP 仓库 + 任务队列）是否处于运行态；默认 false，避免拖慢 DSH 启动 */
+  serverRunning: boolean;
+  serverStartedAt: number | null;
   private httpServer;
   private runners;
   private root;
@@ -14,6 +17,10 @@ declare class OsDeployService extends TypertRemoteService {
   private queueRunning;
   constructor(ctx: any);
   [Service.init](): Promise<void>;
+  serviceStatus(): Promise<ServiceStatusResult>;
+  serviceStart(): Promise<ServiceControlResult>;
+  serviceStop(): Promise<ServiceControlResult>;
+  serviceRestart(): Promise<ServiceControlResult>;
   private load;
   private save;
   listServers(): Promise<GetServerListResult>;

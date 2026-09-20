@@ -164,3 +164,19 @@ export interface DeleteImageResult {
   ok: boolean
   error?: string
 }
+
+// ---------- 服务控制 ----------
+export interface ServiceStatusResult {
+  running: boolean
+  port: number
+  startedAt: number | null
+  imageCount: number
+  taskCount: number
+  activeTaskCount: number
+}
+
+export interface ServiceControlResult {
+  ok: boolean
+  status?: ServiceStatusResult
+  error?: string
+}

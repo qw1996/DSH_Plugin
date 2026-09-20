@@ -17,6 +17,7 @@ const CSS = `
 .osd-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px}
 .osd-queued{background:#888}.osd-running{background:#f5c542;animation:osd-pulse 1.5s infinite}
 .osd-success{background:#30a46c}.osd-failed{background:#e5484d}.osd-cancelled{background:#888}
+.osd-off{background:#888}
 @keyframes osd-pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .osd-name{font-weight:600}
 .osd-meta{opacity:.75;font-size:12px}
@@ -87,6 +88,9 @@ export function apply(ctx: any) {
     const [msg, setMsg] = React.useState('')
     const [busy, setBusy] = React.useState(false)
     const [selectedTaskId, setSelectedTaskId] = React.useState<string | null>(null)
+    // 部署服务运行态（默认不启动，由面板按钮按需拉起）
+    const [svc, setSvc] = React.useState<any>({ running: false, port: 0, imageCount: 0, taskCount: 0 })
+    const [svcBusy, setSvcBusy] = React.useState(false)
 
     // Create task form state
     const [form, setForm] = React.useState<any>({
@@ -106,6 +110,8 @@ export function apply(ctx: any) {
       let alive = true
       async function run() {
         try {
+          const st = await remote.serviceStatus()
+          if (alive) setSvc(st || { running: false })
           const [img, tsk, srv] = await Promise.all([
             remote.listImages(), remote.listTasks(), remote.listServers(),
           ])
@@ -212,9 +218,55 @@ export function apply(ctx: any) {
       try { await remote.deleteTask({ taskId: id }) } catch (e: any) { setMsg('删除失败: ' + String(e?.message || e)) }
     }
 
+    // ---------- 部署服务控制 ----------
+    async function doSvcStart() {
+      setSvcBusy(true); setMsg('')
+      try {
+        const r = await remote.serviceStart()
+        if (r.ok) { setSvc(r.status); setMsg('部署服务已启动（HTTP 软件源 + 任务队列）') }
+        else setMsg('启动失败: ' + (r.error || '未知错误'))
+      } catch (e: any) { setMsg('启动失败: ' + String(e?.message || e)) }
+      finally { setSvcBusy(false) }
+    }
+    async function doSvcStop() {
+      setSvcBusy(true); setMsg('')
+      try {
+        const r = await remote.serviceStop()
+        if (r.ok) { setSvc(r.status); setMsg('部署服务已停止（排队/运行中的任务将终止）') }
+        else setMsg('停止失败: ' + (r.error || '未知错误'))
+      } catch (e: any) { setMsg('停止失败: ' + String(e?.message || e)) }
+      finally { setSvcBusy(false) }
+    }
+    async function doSvcRestart() {
+      setSvcBusy(true); setMsg('')
+      try {
+        const r = await remote.serviceRestart()
+        if (r.ok) { setSvc(r.status); setMsg('部署服务已重启') }
+        else setMsg('重启失败: ' + (r.error || '未知错误'))
+      } catch (e: any) { setMsg('重启失败: ' + String(e?.message || e)) }
+      finally { setSvcBusy(false) }
+    }
+
     const selectedTask = selectedTaskId ? tasks.find(t => t.id === selectedTaskId) : null
 
     return h('div', { className: 'osd-wrap' },
+      // 服务控制条：部署服务默认不启动，按需拉起/停止/重启
+      h('div', { className: 'osd-card' },
+        h('div', { className: 'osd-row' },
+          h('span', { className: 'osd-dot ' + (svc.running ? 'osd-running' : 'osd-off') }),
+          h('span', { className: 'osd-name' }, svc.running ? '部署服务运行中' : '部署服务已停止'),
+          svc.running
+            ? h('span', { className: 'osd-meta' }, `端口 ${svc.port} · 启动于 ${fmt(svc.startedAt)} · 镜像 ${svc.imageCount} · 任务 ${svc.taskCount}`)
+            : h('span', { className: 'osd-meta' }, '不影响 DSH 启动速度'),
+          btn('启动', doSvcStart, 'osd-btn-primary', svcBusy || svc.running),
+          btn('停止', doSvcStop, 'osd-btn-danger', svcBusy || !svc.running),
+          btn('重启', doSvcRestart, '', svcBusy || !svc.running),
+          svcBusy && h('span', { className: 'osd-meta' }, '处理中...'),
+        ),
+        !svc.running && h('span', { className: 'osd-meta' },
+          '部署服务默认不启动：点击「启动」后才会开启 HTTP 软件源与安装任务队列；创建安装任务需先启动服务。'),
+      ),
+
       // Tabs
       h('div', { className: 'osd-tabs' },
         h('div', { className: 'osd-tab' + (tab === 'tasks' ? ' osd-tab-active' : ''), onClick: () => setTab('tasks') }, `安装任务 (${tasks.length})`),
@@ -399,12 +451,16 @@ export function apply(ctx: any) {
         ),
         // Submit
         h('div', { className: 'osd-row' },
-          btn('创建安装任务', doCreateTask, 'osd-btn-primary', busy || !form.imageId || !form.rootPassword || (!form.useServerManager && !form.bmcHost)),
+          btn('创建安装任务', doCreateTask, 'osd-btn-primary', busy || !svc.running || !form.imageId || !form.rootPassword || (!form.useServerManager && !form.bmcHost)),
+          !svc.running && h('span', { className: 'osd-meta', style: { color: '#f5c542' } }, '需先启动部署服务'),
           busy && h('span', { className: 'osd-meta' }, '处理中...'),
         ),
       ),
     )
   }
 
-  ctx.slots.add('settings.os-deploy', { title: 'OS 部署', render: () => h(App) })
+  ctx.slots.inject('settings.section', () => ctx.slots.register(
+    { name: 'settings.section', id: 'os-deploy', order: 51, label: 'OS 部署' },
+    () => h(App),
+  ))
 }

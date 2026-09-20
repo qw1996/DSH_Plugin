@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "paths": {
+      "@deepseek-ai/dsh-typert-protocol": ["./node_modules/@deepseek-ai/dsh-typert-protocol"]
+    }
+  }
+}
