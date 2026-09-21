@@ -121,9 +121,11 @@ interface ProbeDeviceResult {
   nicMac?: string;
   disks?: {
     id: string;
+    name?: string;
     serial: string;
     capacityBytes: number;
     media: string;
+    protocol?: string;
   }[];
   error?: string;
 }

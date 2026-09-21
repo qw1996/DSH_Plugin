@@ -360,9 +360,11 @@ export default class OsDeployService extends TypertRemoteService {
           for (const d of (s.driveDetails || [])) {
             disks.push({
               id: d.Id || '',
+              name: d.Name || d.Id || '',
               serial: (d.SerialNumber || '').trim(),
               capacityBytes: d.CapacityBytes || 0,
               media: d.MediaType || 'HDD',
+              protocol: d.Protocol || '',
             })
           }
         }

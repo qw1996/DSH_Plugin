@@ -5486,9 +5486,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"nicMac": union([_undefined(), string()]).optional(),
 			"disks": union([_undefined(), array(object({
 				"id": string(),
+				"name": union([_undefined(), string()]).optional(),
 				"serial": string(),
 				"capacityBytes": number(),
-				"media": string()
+				"media": string(),
+				"protocol": union([_undefined(), string()]).optional()
 			}))]).optional(),
 			"error": union([_undefined(), string()]).optional()
 		});
@@ -5617,7 +5619,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 428,
+						"line": 430,
 						"column": 9
 					}
 				},
@@ -5644,7 +5646,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 390,
+						"line": 392,
 						"column": 9
 					}
 				},
@@ -5698,7 +5700,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 445,
+						"line": 447,
 						"column": 9
 					}
 				},
@@ -5752,7 +5754,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 421,
+						"line": 423,
 						"column": 9
 					}
 				},
@@ -5833,7 +5835,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 416,
+						"line": 418,
 						"column": 9
 					}
 				},
@@ -6025,6 +6027,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 .osd-modal-foot{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
 .osd-link{font-size:12px;opacity:.7;cursor:pointer;text-decoration:underline}
 .osd-link:hover{opacity:1}
+/* 目标磁盘选择列表 */
+.osd-disklist{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow:auto;border:1px solid rgba(128,128,128,.3);border-radius:8px;padding:4px;min-width:420px}
+.osd-diskrow{display:grid;grid-template-columns:minmax(90px,1fr) minmax(150px,1.6fr) 110px 70px;gap:8px;align-items:center;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:12px}
+.osd-diskrow:hover{background:rgba(128,128,128,.15)}
+.osd-diskrow-selected{background:rgba(59,130,246,.25);outline:1px solid rgba(59,130,246,.5)}
+.osd-diskhead{font-weight:600;opacity:.7;cursor:default}
+.osd-diskhead:hover{background:transparent}
+.osd-disk-sn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.85;font-family:ui-monospace,Consolas,monospace}
 `;
 		async function apply(ctx) {
 			await ctx.remote.$mount(TYPERT_REMOTE);
@@ -6047,6 +6057,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			function unwrap(a) {
 				if (a && a.ok) return a.value;
 				throw new Error(a?.error?.message || a?.error?.code || String(a?.error ?? "调用失败"));
+			}
+			function fmtCap(bytes) {
+				if (!bytes || bytes <= 0) return "—";
+				const gb = bytes / 1e9;
+				return gb >= 1e3 ? (gb / 1024).toFixed(1) + " TB" : gb.toFixed(0) + " GB";
 			}
 			function btn(label, onClick, cls, disabled) {
 				return h("button", {
@@ -6138,19 +6153,24 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						clearInterval(timer);
 					};
 				}, []);
-				react.useEffect(() => {
-					if (!form.vendor) {
-						setComponents([]);
-						return;
-					}
-					remote.listComponents({ vendor: form.vendor }).then((r) => setComponents(unwrap(r).components || [])).catch(() => setComponents([]));
-				}, [form.vendor]);
 				function setF(k) {
 					return (v) => setForm((f) => ({
 						...f,
 						[k]: v
 					}));
 				}
+				const selectedVendor = images.find((i) => i.id === form.imageId)?.vendor || "";
+				react.useEffect(() => {
+					setForm((f) => ({
+						...f,
+						components: ["core"]
+					}));
+					if (!selectedVendor) {
+						setComponents([]);
+						return;
+					}
+					remote.listComponents({ vendor: selectedVendor }).then((r) => setComponents(unwrap(r).components || [])).catch(() => setComponents([]));
+				}, [selectedVendor]);
 				const [fileBrowser, setFileBrowser] = react.useState({
 					open: false,
 					path: "",
@@ -6469,7 +6489,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				}, ...images.filter((i) => i.extracted).map((i) => ({
 					value: i.id,
 					label: `${i.name} (${i.vendor})`
-				}))], setF("imageId"))), form.imageId && h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "2. 安装组件"), h("div", { className: "osd-row" }, components.map((c) => h("div", {
+				}))], setF("imageId"))), form.imageId && h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "2. 安装组件"), h("div", { className: "osd-row" }, components.length === 0 && h("span", { className: "osd-meta" }, `加载 ${selectedVendor || "…"} 组件列表中…`), components.map((c) => h("div", {
 					key: c.id,
 					className: "osd-chip" + (form.components.includes(c.id) ? " osd-chip-on" : ""),
 					onClick: () => setForm((f) => ({
@@ -6493,10 +6513,15 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				}, h("span", { className: "osd-name" }, s.name), h("span", { className: "osd-kv" }, `SSH: ${s.host} · BMC: ${s.bmcHost || "N/A"}`)))) : h(react.Fragment, null, h("div", { className: "osd-row" }, field("BMC 地址", form.bmcHost, setF("bmcHost"), "192.168.1.10"), field("BMC 用户", form.bmcUser, setF("bmcUser"), "Administrator"), field("BMC 密码", form.bmcPassword, setF("bmcPassword"), "", "password"), btn("探测设备", doProbe, "", busy || !form.bmcHost || !form.bmcUser || !form.bmcPassword)), probeResult && h("div", {
 					className: "osd-kv",
 					style: { color: probeResult.ok ? "#30a46c" : "#e5484d" }
-				}, probeResult.ok ? `型号: ${probeResult.model} · SN: ${probeResult.serial} · 电源: ${probeResult.powerState} · NIC: ${probeResult.nicMac}` : `探测失败: ${probeResult.error}`), probeResult?.ok && probeResult.disks && probeResult.disks.length > 0 && h("div", { className: "osd-kv" }, "磁盘: ", probeResult.disks.map((d) => `${d.serial} (${(d.capacityBytes / 1e9).toFixed(0)}GB ${d.media})`).join(" | ")))), h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "4. OS 配置"), h("div", { className: "osd-row" }, field("root 密码", form.rootPassword, setF("rootPassword"), "", "password"), field("主机名", form.hostname, setF("hostname"), "server-01")), h("div", { className: "osd-row" }, field("OS IP", form.osIp, setF("osIp"), "192.168.1.100"), field("网关", form.osGateway, setF("osGateway"), "192.168.1.1"), field("子网掩码位数", form.osPrefixLen, setF("osPrefixLen"), "24"), field("DNS", form.osDns, setF("osDns"), "114.114.114.114")), h("div", { className: "osd-row" }, field("业务网卡 MAC", form.nicMac, setF("nicMac"), "aa:bb:cc:dd:ee:ff"), probeResult?.disks && probeResult.disks.length > 0 && selectField("目标磁盘", form.diskSn, probeResult.disks.map((d) => ({
-					value: d.serial,
-					label: `${d.serial} (${(d.capacityBytes / 1e9).toFixed(0)}GB)`
-				})), setF("diskSn"))), h("div", { className: "osd-meta" }, "注意：安装会清空目标磁盘上的所有数据！")), h("div", { className: "osd-row" }, btn("创建安装任务", doCreateTask, "osd-btn-primary", busy || !svc.running || !form.imageId || !form.rootPassword || !form.useServerManager && !form.bmcHost), !svc.running && h("span", {
+				}, probeResult.ok ? `型号: ${probeResult.model} · SN: ${probeResult.serial} · 电源: ${probeResult.powerState} · NIC: ${probeResult.nicMac}` : `探测失败: ${probeResult.error}`), probeResult?.ok && (probeResult.disks || []).length > 0 && h("label", { className: "osd-field" }, h("span", { className: "osd-meta" }, `目标磁盘（点击选择安装盘，共 ${probeResult.disks.length} 块${form.diskSn ? "" : "；未选择时自动使用第一块盘"}）`), h("div", { className: "osd-disklist" }, h("div", { className: "osd-diskrow osd-diskhead" }, h("span", null, "盘符"), h("span", null, "SN"), h("span", null, "类型"), h("span", null, "容量")), probeResult.disks.map((d) => h("div", {
+					key: (d.id || "") + (d.serial || ""),
+					className: "osd-diskrow" + (form.diskSn && form.diskSn === d.serial ? " osd-diskrow-selected" : ""),
+					title: `安装到 ${d.name || d.id || ""} (SN ${d.serial || "?"}) —— 将清空此盘全部数据`,
+					onClick: () => setForm((f) => ({
+						...f,
+						diskSn: f.diskSn === d.serial ? "" : d.serial
+					}))
+				}, h("span", null, d.name || d.id || "—"), h("span", { className: "osd-disk-sn" }, d.serial || "—"), h("span", null, [d.protocol, d.media].filter(Boolean).join(" ") || "—"), h("span", null, fmtCap(d.capacityBytes)))))), probeResult?.ok && (probeResult.disks || []).length === 0 && h("span", { className: "osd-meta" }, "未发现磁盘（安装时将自动使用第一块盘）"))), h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "4. OS 配置"), h("div", { className: "osd-row" }, field("root 密码", form.rootPassword, setF("rootPassword"), "", "password"), field("主机名", form.hostname, setF("hostname"), "server-01")), h("div", { className: "osd-row" }, field("OS IP", form.osIp, setF("osIp"), "192.168.1.100"), field("网关", form.osGateway, setF("osGateway"), "192.168.1.1"), field("子网掩码位数", form.osPrefixLen, setF("osPrefixLen"), "24"), field("DNS", form.osDns, setF("osDns"), "114.114.114.114")), h("div", { className: "osd-row" }, field("业务网卡 MAC", form.nicMac, setF("nicMac"), "aa:bb:cc:dd:ee:ff")), h("div", { className: "osd-meta" }, form.diskSn ? `目标磁盘 SN: ${form.diskSn} —— 安装会清空该盘上的所有数据！` : "注意：未选择目标磁盘时将自动使用第一块盘，安装会清空该盘上的所有数据！")), h("div", { className: "osd-row" }, btn("创建安装任务", doCreateTask, "osd-btn-primary", busy || !svc.running || !form.imageId || !form.rootPassword || !form.useServerManager && !form.bmcHost), !svc.running && h("span", {
 					className: "osd-meta",
 					style: { color: "#f5c542" }
 				}, "需先启动部署服务"), busy && h("span", { className: "osd-meta" }, "处理中..."))), fileBrowser.open && h("div", {

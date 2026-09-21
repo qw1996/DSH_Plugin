@@ -143,7 +143,7 @@ export interface ProbeDeviceResult {
   serial?: string
   powerState?: string
   nicMac?: string
-  disks?: { id: string; serial: string; capacityBytes: number; media: string }[]
+  disks?: { id: string; name?: string; serial: string; capacityBytes: number; media: string; protocol?: string }[]
   error?: string
 }
 

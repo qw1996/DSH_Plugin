@@ -728,9 +728,11 @@ let OsDeployService = (() => {
 				let nicMac = "";
 				if (storages) for (const s of storages) for (const d of s.driveDetails || []) disks.push({
 					id: d.Id || "",
+					name: d.Name || d.Id || "",
 					serial: (d.SerialNumber || "").trim(),
 					capacityBytes: d.CapacityBytes || 0,
-					media: d.MediaType || "HDD"
+					media: d.MediaType || "HDD",
+					protocol: d.Protocol || ""
 				});
 				try {
 					const eth = await rf.get("/redfish/v1/Systems/1/EthernetInterfaces");
