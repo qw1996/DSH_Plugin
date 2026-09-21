@@ -1,392 +1,10 @@
-import { createRequire } from "node:module";
+import { d as DEFAULT_TLS_CERT, f as DEFAULT_TLS_KEY, i as extractIso, n as DeployRunner, r as RedfishClient, t as DeployHttpServer, u as getRouteIp } from "./engine-DEu0st7h.js";
 import { Service } from "@deepseek-ai/cordis";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
-import * as http from "http";
-import * as https from "https";
-import { execFileSync } from "child_process";
-//#region \0rolldown/runtime.js
-var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
-//#endregion
-//#region src/engine.ts
-var RedfishClient = class {
-	host;
-	user;
-	pass;
-	token = null;
-	constructor(bmc) {
-		this.host = bmc.host;
-		this.user = bmc.user;
-		this.pass = bmc.pass;
-	}
-	req(method, uri, body, extraHeaders) {
-		return new Promise((resolve, reject) => {
-			const data = body !== void 0 ? JSON.stringify(body) : null;
-			const headers = {
-				"Content-Type": "application/json",
-				"Accept": "application/json",
-				"Content-Length": data ? String(Buffer.byteLength(data)) : "0",
-				...extraHeaders
-			};
-			if (this.token) headers["X-Auth-Token"] = this.token;
-			else headers["Authorization"] = "Basic " + Buffer.from(`${this.user}:${this.pass}`).toString("base64");
-			const r = https.request({
-				host: this.host,
-				path: uri,
-				method,
-				headers,
-				rejectUnauthorized: false,
-				timeout: 3e4
-			}, (res) => {
-				let buf = "";
-				res.on("data", (c) => {
-					buf += c;
-				});
-				res.on("end", () => {
-					let json = null;
-					try {
-						json = buf ? JSON.parse(buf) : null;
-					} catch (e) {}
-					resolve({
-						status: res.statusCode,
-						headers: res.headers,
-						json,
-						raw: buf
-					});
-				});
-			});
-			r.on("error", reject);
-			r.on("timeout", () => r.destroy(/* @__PURE__ */ new Error("request timeout")));
-			if (data) r.write(data);
-			r.end();
-		});
-	}
-	get(u) {
-		return this.req("GET", u);
-	}
-	post(u, b) {
-		return this.req("POST", u, b);
-	}
-	patch(u, b, extra) {
-		return this.req("PATCH", u, b, extra);
-	}
-	async getSystem() {
-		const r = await this.get("/redfish/v1/Systems/1");
-		if (r.status !== 200) throw new Error(`getSystem -> HTTP ${r.status}`);
-		return r.json;
-	}
-	async getStorage() {
-		try {
-			const r = await this.get("/redfish/v1/Systems/1/Storage");
-			if (r.status !== 200) return null;
-			const storages = [];
-			for (const m of r.json.Members || []) {
-				const sr = await this.get(m["@odata.id"]);
-				if (sr.status === 200) storages.push(sr.json);
-			}
-			for (const s of storages) {
-				if (s.Drives) {
-					s.driveDetails = [];
-					for (const d of s.Drives) {
-						const dr = await this.get(d["@odata.id"]);
-						if (dr.status === 200) s.driveDetails.push(dr.json);
-					}
-				}
-				if (s.Volumes) {
-					const vr = await this.get(s.Volumes["@odata.id"]);
-					if (vr.status === 200) {
-						s.volumeDetails = [];
-						for (const v of (vr.json.Members || []).slice(0, 5)) {
-							const vm = await this.get(v["@odata.id"]);
-							if (vm.status === 200) s.volumeDetails.push(vm.json);
-						}
-					}
-				}
-			}
-			return storages;
-		} catch (e) {
-			return null;
-		}
-	}
-	async patchSystem(body) {
-		const g = await this.get("/redfish/v1/Systems/1");
-		const etag = g.headers && g.headers["etag"];
-		const extra = {};
-		if (etag) extra["If-Match"] = etag;
-		const r = await this.patch("/redfish/v1/Systems/1", body, extra);
-		if (r.status !== 200 && r.status !== 204) throw new Error(`patchSystem -> HTTP ${r.status} ${r.raw ? r.raw.slice(0, 200) : ""}`);
-	}
-	async setBootOnce(target) {
-		await this.patchSystem({ Boot: {
-			BootSourceOverrideEnabled: "Once",
-			BootSourceOverrideTarget: target
-		} });
-	}
-	async power(action) {
-		const r = await this.post("/redfish/v1/Systems/1/Actions/ComputerSystem.Reset", { ResetType: action });
-		if (r.status !== 200 && r.status !== 204) throw new Error(`power ${action} -> HTTP ${r.status}`);
-	}
-	async vmediaConnect(imageUrl) {
-		const r = await this.post("/redfish/v1/Managers/1/VirtualMedia/CD/Oem/Huawei/Actions/VirtualMedia.VmmControl", {
-			VmmControlType: "Connect",
-			Image: imageUrl
-		});
-		if (r.status >= 400) throw new Error(`vmediaConnect -> HTTP ${r.status}`);
-	}
-	async vmediaDisconnect() {
-		const r = await this.post("/redfish/v1/Managers/1/VirtualMedia/CD/Oem/Huawei/Actions/VirtualMedia.VmmControl", { VmmControlType: "Disconnect" });
-		if (r.status >= 400) throw new Error(`vmediaDisconnect -> HTTP ${r.status}`);
-	}
-	async vmediaStatus() {
-		const r = await this.get("/redfish/v1/Managers/1/VirtualMedia/CD");
-		if (r.status !== 200) throw new Error(`vmediaStatus -> HTTP ${r.status}`);
-		return r.json;
-	}
-};
-var DeployHttpServer = class {
-	server = null;
-	port;
-	roots = /* @__PURE__ */ new Map();
-	reportHandler = null;
-	constructor(port) {
-		this.port = port;
-	}
-	setRoot(prefix, dir) {
-		this.roots.set(prefix, dir);
-	}
-	removeRoot(prefix) {
-		this.roots.delete(prefix);
-	}
-	onReport(handler) {
-		this.reportHandler = handler;
-	}
-	start() {
-		return new Promise((resolve, reject) => {
-			this.server = http.createServer((req, res) => {
-				try {
-					this.handle(req, res);
-				} catch (e) {
-					res.writeHead(500);
-					res.end("error");
-				}
-			});
-			this.server.on("error", reject);
-			this.server.listen(this.port, "0.0.0.0", () => resolve());
-		});
-	}
-	stop() {
-		if (this.server) {
-			this.server.close();
-			this.server = null;
-		}
-	}
-	handle(req, res) {
-		const u = new URL(req.url || "/", "http://localhost");
-		const ip = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
-		if (u.pathname === "/report" || u.pathname === "/report/") {
-			const q = u.searchParams;
-			if (this.reportHandler) this.reportHandler(q, ip);
-			res.writeHead(200);
-			res.end("ok");
-			return;
-		}
-		if (req.method !== "GET" && req.method !== "HEAD") {
-			res.writeHead(405);
-			res.end();
-			return;
-		}
-		let pathname = u.pathname;
-		try {
-			pathname = decodeURIComponent(u.pathname);
-		} catch (e) {}
-		const prefix = Array.from(this.roots.keys()).filter((p) => pathname === p || pathname.startsWith(p + "/") || p === "/").sort((a, b) => b.length - a.length)[0];
-		if (!prefix) {
-			res.writeHead(404);
-			res.end("not found");
-			return;
-		}
-		const rel = pathname.slice(prefix === "/" ? 0 : prefix.length).replace(/^\/+/, "");
-		const fp = path.join(this.roots.get(prefix), rel);
-		const rootAbs = path.resolve(this.roots.get(prefix));
-		if (!path.resolve(fp).startsWith(rootAbs)) {
-			res.writeHead(403);
-			res.end();
-			return;
-		}
-		fs.stat(fp, (e, st) => {
-			if (e || !st.isFile()) {
-				res.writeHead(404);
-				res.end("not found");
-				return;
-			}
-			const total = st.size;
-			let start = 0, end = total - 1, code = 200;
-			const range = req.headers["range"];
-			if (range) {
-				const m = /^bytes=(\d*)-(\d*)$/.exec(String(range));
-				if (m) {
-					if (m[1]) start = parseInt(m[1]);
-					if (m[2]) end = Math.min(parseInt(m[2]), total - 1);
-					else end = total - 1;
-					code = 206;
-				}
-			}
-			const len = end - start + 1;
-			res.writeHead(code, {
-				"Content-Length": len,
-				"Accept-Ranges": "bytes",
-				...code === 206 ? { "Content-Range": `bytes ${start}-${end}/${total}` } : {}
-			});
-			if (req.method === "HEAD") {
-				res.end();
-				return;
-			}
-			const stream = fs.createReadStream(fp, {
-				start,
-				end
-			});
-			stream.on("error", () => {
-				try {
-					res.destroy();
-				} catch (e) {}
-			});
-			stream.pipe(res);
-		});
-	}
-};
-function extractIso(isoPath, outDir) {
-	try {
-		fs.mkdirSync(outDir, { recursive: true });
-		execFileSync("tar", [
-			"-xf",
-			isoPath,
-			"-C",
-			outDir
-		], {
-			timeout: 6e5,
-			stdio: "pipe"
-		});
-		return { ok: true };
-	} catch (e) {
-		const hasPackages = fs.existsSync(path.join(outDir, "Packages")) || fs.existsSync(path.join(outDir, "pool"));
-		const hasDists = fs.existsSync(path.join(outDir, "dists")) || fs.existsSync(path.join(outDir, ".treeinfo"));
-		if (hasPackages || hasDists) return { ok: true };
-		return {
-			ok: false,
-			error: String(e.message || e)
-		};
-	}
-}
-var DeployRunner = class {
-	rf;
-	spec;
-	serverIp;
-	httpPort;
-	progress;
-	cancelled = false;
-	constructor(spec, serverIp, httpPort, progress) {
-		this.spec = spec;
-		this.serverIp = serverIp;
-		this.httpPort = httpPort;
-		this.progress = progress;
-		this.rf = new RedfishClient(spec.bmc);
-	}
-	cancel() {
-		this.cancelled = true;
-	}
-	async run() {
-		try {
-			this.progress("preflight", 2, "Probing BMC...");
-			const sys = await this.rf.getSystem();
-			this.progress("preflight", 5, `BMC ok: ${sys.Model || "unknown"} power=${sys.PowerState}`);
-			if (this.cancelled) return {
-				ok: false,
-				error: "cancelled"
-			};
-			this.progress("building", 8, "Preparing boot image...");
-			this.progress("mounting", 12, "Mounting virtual CD...");
-			const imageUrl = `https://${this.serverIp}/iso/deploy.iso`;
-			await this.rf.vmediaConnect(imageUrl);
-			let inserted = false;
-			for (let i = 0; i < 24; i++) {
-				if (this.cancelled) {
-					await this.rf.vmediaDisconnect().catch(() => {});
-					return {
-						ok: false,
-						error: "cancelled"
-					};
-				}
-				await sleep(1e4);
-				if ((await this.rf.vmediaStatus()).Inserted) {
-					inserted = true;
-					break;
-				}
-				this.progress("mounting", 12 + i, `Waiting for VCD insert (${(i + 1) * 10}s)...`);
-			}
-			if (!inserted) throw new Error("virtual media did not insert within 4 min");
-			this.progress("booting", 20, "Setting boot override + restarting...");
-			await this.rf.setBootOnce("Cd");
-			const powerState = sys.PowerState;
-			await this.rf.power(powerState === "On" ? "ForceRestart" : "On");
-			this.progress("installing", 25, "Machine booting... waiting for installer reports...");
-			const startTime = Date.now();
-			const timeoutMs = 18e5;
-			while (Date.now() - startTime < timeoutMs) {
-				if (this.cancelled) {
-					await this.rf.vmediaDisconnect().catch(() => {});
-					return {
-						ok: false,
-						error: "cancelled"
-					};
-				}
-				await sleep(3e4);
-				const elapsed = Math.floor((Date.now() - startTime) / 1e3);
-				const pct = Math.min(25 + Math.floor(elapsed / 1800 * 65), 90);
-				this.progress("installing", pct, `Waiting for OS to boot (${Math.floor(elapsed / 60)}min)...`);
-				if (await this.trySsh(this.spec.osIp)) {
-					this.progress("verifying", 95, "SSH is up! Verifying installation...");
-					await this.rf.vmediaDisconnect().catch(() => {});
-					this.progress("done", 100, "Installation complete!");
-					return { ok: true };
-				}
-			}
-			await this.rf.vmediaDisconnect().catch(() => {});
-			return {
-				ok: false,
-				error: "timeout waiting for SSH (30 min)"
-			};
-		} catch (e) {
-			await this.rf.vmediaDisconnect().catch(() => {});
-			return {
-				ok: false,
-				error: String(e.message || e)
-			};
-		}
-	}
-	async trySsh(ip) {
-		return new Promise((resolve) => {
-			const s = new (__require("net")).Socket();
-			s.setTimeout(5e3);
-			s.on("connect", () => {
-				s.destroy();
-				resolve(true);
-			});
-			s.on("error", () => resolve(false));
-			s.on("timeout", () => {
-				s.destroy();
-				resolve(false);
-			});
-			s.connect(22, ip);
-		});
-	}
-};
-function sleep(ms) {
-	return new Promise((r) => setTimeout(r, ms));
-}
-//#endregion
 //#region src/index.ts
 var __runInitializers = function(thisArg, initializers, value) {
 	var useValue = arguments.length > 2;
@@ -429,6 +47,8 @@ var __esDecorate = function(ctor, descriptorIn, decorators, contextIn, initializ
 	done = true;
 };
 const HTTP_PORT = 8080;
+/** 虚拟光驱 HTTPS 端口（iBMC 要求 https:// 镜像 URL；443 免端口后缀） */
+const HTTPS_PORT = 443;
 const COMPONENTS = {
 	openEuler: [
 		{
@@ -823,13 +443,18 @@ let OsDeployService = (() => {
 					ok: true,
 					status: await this.serviceStatus()
 				};
-				this.httpServer = new DeployHttpServer(HTTP_PORT);
+				this.httpServer = new DeployHttpServer(HTTP_PORT, HTTPS_PORT);
 				this.httpServer.onReport((query, ip) => this.handleReport(query, ip));
-				await this.httpServer.start();
+				const isoDir = path.join(this.root || os.tmpdir(), "os-deploy-iso");
+				fs.mkdirSync(isoDir, { recursive: true });
+				this.httpServer.setRoot("/iso", isoDir);
+				const tls = this.ensureTls();
+				await this.httpServer.start(tls);
 				for (const img of this.images) if (img.extracted && img.extractedDir) this.httpServer.setRoot(`/repo/${img.distroId}`, img.extractedDir);
+				if (!this.httpServer.httpsUp) this.addSvcNote(`HTTPS :${HTTPS_PORT} 未就绪（${this.httpServer.httpsError}）——虚拟光驱挂载将失败`);
 				this.serverRunning = true;
 				this.serverStartedAt = Date.now();
-				console.log(`[osdeploy] HTTP server listening on 0.0.0.0:${HTTP_PORT}`);
+				console.log(`[osdeploy] HTTP server listening on 0.0.0.0:${HTTP_PORT}, HTTPS on :${HTTPS_PORT}`);
 				this.processQueue();
 				return {
 					ok: true,
@@ -842,6 +467,30 @@ let OsDeployService = (() => {
 					error: String(e?.message || e)
 				};
 			}
+		}
+		/** 确保 <root>/certs/ 下有 TLS 证书（虚拟光驱 HTTPS 用）；缺失则落盘内嵌默认自签对。 */
+		ensureTls() {
+			try {
+				const dir = path.join(this.root || process.cwd(), "certs");
+				const crt = path.join(dir, "server.crt");
+				const key = path.join(dir, "server.key");
+				if (!fs.existsSync(crt) || !fs.existsSync(key)) {
+					fs.mkdirSync(dir, { recursive: true });
+					fs.writeFileSync(crt, DEFAULT_TLS_CERT, "utf8");
+					fs.writeFileSync(key, DEFAULT_TLS_KEY, "utf8");
+					console.log("[osdeploy] wrote default self-signed TLS cert for virtual media HTTPS");
+				}
+				return {
+					cert: fs.readFileSync(crt, "utf8"),
+					key: fs.readFileSync(key, "utf8")
+				};
+			} catch (e) {
+				console.error("[osdeploy] TLS cert setup failed:", e?.message || e);
+				return;
+			}
+		}
+		addSvcNote(note) {
+			console.warn(`[osdeploy] ${note}`);
 		}
 		async serviceStop() {
 			try {
@@ -1247,8 +896,9 @@ let OsDeployService = (() => {
 			task.status = "running";
 			task.startedAt = Date.now();
 			this.addLog(task, "info", `Starting deployment to ${task.device.bmcHost}...`);
-			const serverIp = await this.getLocalIp();
-			const runner = new DeployRunner({
+			const serverIp = await getRouteIp(task.device.bmcHost);
+			this.addLog(task, "info", `Server IP (routed to ${task.device.bmcHost}): ${serverIp}`);
+			const spec = {
 				bmc: {
 					host: task.device.bmcHost,
 					user: task.device.bmcUser,
@@ -1261,12 +911,15 @@ let OsDeployService = (() => {
 				osPrefixLen: task.device.osPrefixLen,
 				osDns: task.device.osDns,
 				rootPassword: task.device.rootPassword,
-				diskSn: "",
+				diskSn: task.device.diskSn || "",
 				distroId: img.distroId,
 				vendor: img.vendor,
 				repoDir: img.extractedDir || "",
-				components: task.components
-			}, serverIp, HTTP_PORT, (stage, progress, log) => {
+				components: task.components,
+				taskId: task.id,
+				isoOutDir: path.join(this.root || process.cwd(), "os-deploy-iso")
+			};
+			const runner = new DeployRunner(spec, serverIp, HTTP_PORT, (stage, progress, log) => {
 				task.stage = stage;
 				task.progress = progress;
 				if (log) this.addLog(task, "info", log);
@@ -1317,20 +970,6 @@ let OsDeployService = (() => {
 				msg
 			});
 			if (task.logs.length > 200) task.logs.splice(0, task.logs.length - 200);
-		}
-		async getLocalIp() {
-			return new Promise((resolve) => {
-				const ifs = os.networkInterfaces();
-				for (const name of Object.keys(ifs)) {
-					const list = ifs[name];
-					if (!list) continue;
-					for (const i of list) if (i.family === "IPv4" && !i.internal) {
-						resolve(i.address);
-						return;
-					}
-				}
-				resolve("127.0.0.1");
-			});
 		}
 	};
 })();

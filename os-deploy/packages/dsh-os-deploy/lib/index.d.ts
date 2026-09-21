@@ -18,6 +18,9 @@ declare class OsDeployService extends TypertRemoteService {
   [Service.init](): Promise<void>;
   serviceStatus(): Promise<ServiceStatusResult>;
   serviceStart(): Promise<ServiceControlResult>;
+  /** 确保 <root>/certs/ 下有 TLS 证书（虚拟光驱 HTTPS 用）；缺失则落盘内嵌默认自签对。 */
+  private ensureTls;
+  private addSvcNote;
   serviceStop(): Promise<ServiceControlResult>;
   serviceRestart(): Promise<ServiceControlResult>;
   private load;
@@ -47,7 +50,6 @@ declare class OsDeployService extends TypertRemoteService {
   private runTask;
   private handleReport;
   private addLog;
-  private getLocalIp;
 }
 //#endregion
 export { OsDeployService as default };

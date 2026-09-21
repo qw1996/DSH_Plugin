@@ -40,6 +40,8 @@ export interface TargetDevice {
   osPrefixLen: number        // e.g. 24 for /24
   osDns: string[]
   rootPassword: string
+  // 目标磁盘 SN（探测设备后选定；空 = 安装期 %pre 自动选第一块盘）
+  diskSn?: string
   // SSH info (optional, for verification after install)
   sshUser?: string
   sshPort?: number

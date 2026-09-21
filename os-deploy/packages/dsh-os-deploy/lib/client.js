@@ -5316,6 +5316,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				"osPrefixLen": number(),
 				"osDns": array(string()),
 				"rootPassword": string(),
+				"diskSn": union([_undefined(), string()]).optional(),
 				"sshUser": union([_undefined(), string()]).optional(),
 				"sshPort": union([_undefined(), number()]).optional(),
 				"label": union([_undefined(), string()]).optional()
@@ -5359,6 +5360,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					"osPrefixLen": number(),
 					"osDns": array(string()),
 					"rootPassword": string(),
+					"diskSn": union([_undefined(), string()]).optional(),
 					"sshUser": union([_undefined(), string()]).optional(),
 					"sshPort": union([_undefined(), number()]).optional(),
 					"label": union([_undefined(), string()]).optional()
@@ -5440,6 +5442,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				"osPrefixLen": number(),
 				"osDns": array(string()),
 				"rootPassword": string(),
+				"diskSn": union([_undefined(), string()]).optional(),
 				"sshUser": union([_undefined(), string()]).optional(),
 				"sshPort": union([_undefined(), number()]).optional(),
 				"label": union([_undefined(), string()]).optional()
@@ -5587,7 +5590,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 218,
+						"line": 252,
 						"column": 9
 					}
 				},
@@ -5614,7 +5617,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 394,
+						"line": 428,
 						"column": 9
 					}
 				},
@@ -5641,7 +5644,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 356,
+						"line": 390,
 						"column": 9
 					}
 				},
@@ -5668,7 +5671,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 294,
+						"line": 328,
 						"column": 9
 					}
 				},
@@ -5695,7 +5698,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 411,
+						"line": 445,
 						"column": 9
 					}
 				},
@@ -5722,7 +5725,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 276,
+						"line": 310,
 						"column": 9
 					}
 				},
@@ -5749,7 +5752,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 387,
+						"line": 421,
 						"column": 9
 					}
 				},
@@ -5776,7 +5779,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 311,
+						"line": 345,
 						"column": 9
 					}
 				},
@@ -5794,7 +5797,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 305,
+						"line": 339,
 						"column": 9
 					}
 				},
@@ -5812,7 +5815,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 178,
+						"line": 212,
 						"column": 9
 					}
 				},
@@ -5830,7 +5833,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 382,
+						"line": 416,
 						"column": 9
 					}
 				},
@@ -5857,7 +5860,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 317,
+						"line": 351,
 						"column": 9
 					}
 				},
@@ -5884,7 +5887,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 252,
+						"line": 286,
 						"column": 9
 					}
 				},
@@ -5902,7 +5905,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 151,
+						"line": 185,
 						"column": 9
 					}
 				},
@@ -5920,7 +5923,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 105,
+						"line": 108,
 						"column": 9
 					}
 				},
@@ -5938,7 +5941,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 92,
+						"line": 95,
 						"column": 9
 					}
 				},
@@ -5956,7 +5959,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 128,
+						"line": 162,
 						"column": 9
 					}
 				}

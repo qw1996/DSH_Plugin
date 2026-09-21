@@ -33,6 +33,7 @@ interface TargetDevice {
   osPrefixLen: number;
   osDns: string[];
   rootPassword: string;
+  diskSn?: string;
   sshUser?: string;
   sshPort?: number;
   label?: string;

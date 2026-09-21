@@ -14,6 +14,7 @@ export default defineConfig({
   name: '@qinwei/dsh-os-deploy',
   entry: {
     index: 'src/index.ts',
+    engine: 'src/engine.ts',
     'types/types': 'src/types.ts',
   },
   format: ['esm'],

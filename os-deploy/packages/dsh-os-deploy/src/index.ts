@@ -24,12 +24,15 @@ import type {
 } from './types'
 import {
   RedfishClient, DeployHttpServer, DeployRunner, DeploySpec,
-  extractIso, genKickstart, genPreseed,
+  extractIso, genKickstart, genPreseed, getRouteIp,
 } from './engine'
+import { DEFAULT_TLS_CERT, DEFAULT_TLS_KEY } from './certs'
 
 type Json = any
 
 const HTTP_PORT = 8080
+/** 虚拟光驱 HTTPS 端口（iBMC 要求 https:// 镜像 URL；443 免端口后缀） */
+const HTTPS_PORT = 443
 
 const COMPONENTS: Record<string, InstallComponent[]> = {
   openEuler: [
@@ -105,16 +108,24 @@ export default class OsDeployService extends TypertRemoteService {
   async serviceStart(): Promise<ServiceControlResult> {
     try {
       if (this.serverRunning) return { ok: true, status: await this.serviceStatus() }
-      this.httpServer = new DeployHttpServer(HTTP_PORT)
+      this.httpServer = new DeployHttpServer(HTTP_PORT, HTTPS_PORT)
       this.httpServer.onReport((query, ip) => this.handleReport(query, ip))
-      await this.httpServer.start()
+      // 虚拟光驱镜像目录（HTTPS /iso 根）与 TLS 证书
+      const isoDir = path.join(this.root || os.tmpdir(), 'os-deploy-iso')
+      fs.mkdirSync(isoDir, { recursive: true })
+      this.httpServer.setRoot('/iso', isoDir)
+      const tls = this.ensureTls()
+      await this.httpServer.start(tls)
       // 为已解包的镜像重新注册 HTTP 根
       for (const img of this.images) {
         if (img.extracted && img.extractedDir) this.httpServer.setRoot(`/repo/${img.distroId}`, img.extractedDir)
       }
+      if (!this.httpServer.httpsUp) {
+        this.addSvcNote(`HTTPS :${HTTPS_PORT} 未就绪（${this.httpServer.httpsError}）——虚拟光驱挂载将失败`)
+      }
       this.serverRunning = true
       this.serverStartedAt = Date.now()
-      console.log(`[osdeploy] HTTP server listening on 0.0.0.0:${HTTP_PORT}`)
+      console.log(`[osdeploy] HTTP server listening on 0.0.0.0:${HTTP_PORT}, HTTPS on :${HTTPS_PORT}`)
       // 恢复队列中排队的任务
       this.processQueue()
       return { ok: true, status: await this.serviceStatus() }
@@ -122,6 +133,29 @@ export default class OsDeployService extends TypertRemoteService {
       this.httpServer = null
       return { ok: false, error: String(e?.message || e) }
     }
+  }
+
+  /** 确保 <root>/certs/ 下有 TLS 证书（虚拟光驱 HTTPS 用）；缺失则落盘内嵌默认自签对。 */
+  private ensureTls(): { cert: string; key: string } | undefined {
+    try {
+      const dir = path.join(this.root || process.cwd(), 'certs')
+      const crt = path.join(dir, 'server.crt')
+      const key = path.join(dir, 'server.key')
+      if (!fs.existsSync(crt) || !fs.existsSync(key)) {
+        fs.mkdirSync(dir, { recursive: true })
+        fs.writeFileSync(crt, DEFAULT_TLS_CERT, 'utf8')
+        fs.writeFileSync(key, DEFAULT_TLS_KEY, 'utf8')
+        console.log('[osdeploy] wrote default self-signed TLS cert for virtual media HTTPS')
+      }
+      return { cert: fs.readFileSync(crt, 'utf8'), key: fs.readFileSync(key, 'utf8') }
+    } catch (e: any) {
+      console.error('[osdeploy] TLS cert setup failed:', e?.message || e)
+      return undefined
+    }
+  }
+
+  private addSvcNote(note: string) {
+    console.warn(`[osdeploy] ${note}`)
   }
 
   @Remote('serviceStop')
@@ -482,7 +516,8 @@ export default class OsDeployService extends TypertRemoteService {
     task.startedAt = Date.now()
     this.addLog(task, 'info', `Starting deployment to ${task.device.bmcHost}...`)
 
-    const serverIp = await this.getLocalIp()
+    const serverIp = await getRouteIp(task.device.bmcHost)
+    this.addLog(task, 'info', `Server IP (routed to ${task.device.bmcHost}): ${serverIp}`)
     const spec: DeploySpec = {
       bmc: { host: task.device.bmcHost, user: task.device.bmcUser, pass: task.device.bmcPassword },
       nicMac: task.device.nicMac,
@@ -492,11 +527,13 @@ export default class OsDeployService extends TypertRemoteService {
       osPrefixLen: task.device.osPrefixLen,
       osDns: task.device.osDns,
       rootPassword: task.device.rootPassword,
-      diskSn: '', // will be resolved during install (user selects)
+      diskSn: task.device.diskSn || '', // 空则安装期 %pre 自动选第一块盘
       distroId: img.distroId,
       vendor: img.vendor,
       repoDir: img.extractedDir || '',
       components: task.components,
+      taskId: task.id,
+      isoOutDir: path.join(this.root || process.cwd(), 'os-deploy-iso'),
     }
 
     const runner = new DeployRunner(spec, serverIp, HTTP_PORT, (stage, progress, log) => {
@@ -551,23 +588,6 @@ export default class OsDeployService extends TypertRemoteService {
   private addLog(task: DeployTask, level: string, msg: string) {
     task.logs.push({ ts: Date.now(), level: level as any, msg })
     if (task.logs.length > 200) task.logs.splice(0, task.logs.length - 200)
-  }
-
-  private async getLocalIp(): Promise<string> {
-    return new Promise((resolve) => {
-      const ifs = os.networkInterfaces()
-      for (const name of Object.keys(ifs)) {
-        const list = ifs[name]
-        if (!list) continue
-        for (const i of list) {
-          if (i.family === 'IPv4' && !i.internal) {
-            resolve(i.address)
-            return
-          }
-        }
-      }
-      resolve('127.0.0.1')
-    })
   }
 }
 
