@@ -44,6 +44,12 @@ const ns = {
   cancelTask: async () => ({ ok: true, value: { ok: true } }),
   deleteTask: async () => ({ ok: true, value: { ok: true } }),
   serviceRestart: async () => ({ ok: true, value: { ok: true, status: { ...svcRunning } } }),
+  browsePath: async () => ({ ok: true, value: {
+    path: 'C:\\Users', parent: 'C:\\', home: 'C:\\Users\\x', roots: ['C:\\', 'E:\\'],
+    entries: [
+      { name: 'isos', path: 'C:\\Users\\isos', isDir: true, sizeBytes: null },
+      { name: 'openEuler.iso', path: 'C:\\Users\\isos\\openEuler.iso', isDir: false, sizeBytes: 4294967296 },
+    ], truncated: false } }),
 };
 
 let mounted = null;

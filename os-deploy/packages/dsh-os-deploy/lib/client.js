@@ -5278,6 +5278,25 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		}
 		//#endregion
 		//#region lib/typert.remote-client.js
+		const _qinwei_dsh_os_deploy_osDeploy_browsePath_parameter_0$schema = object({ "path": union([
+			_undefined(),
+			literal(null),
+			string()
+		]).optional() });
+		const _qinwei_dsh_os_deploy_osDeploy_browsePath_result$schema = object({
+			"path": string(),
+			"parent": union([literal(null), string()]),
+			"home": string(),
+			"roots": array(string()),
+			"entries": array(object({
+				"name": string(),
+				"path": string(),
+				"isDir": boolean(),
+				"sizeBytes": union([literal(null), number()])
+			})),
+			"truncated": boolean(),
+			"error": union([_undefined(), string()]).optional()
+		});
 		const _qinwei_dsh_os_deploy_osDeploy_cancelTask_parameter_0$schema = object({ "taskId": string() });
 		const _qinwei_dsh_os_deploy_osDeploy_cancelTask_result$schema = object({
 			"ok": boolean(),
@@ -5546,6 +5565,33 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			package: "@qinwei/dsh-os-deploy",
 			descriptors: [
 				{
+					id: "@qinwei/dsh-os-deploy#osDeploy/browsePath",
+					service: "osDeploy",
+					namespace: "osDeploy",
+					method: "browsePath",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "req",
+						wire: "req",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@qinwei/dsh-os-deploy/types#BrowsePathRequest",
+							schema: _qinwei_dsh_os_deploy_osDeploy_browsePath_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@qinwei/dsh-os-deploy/types#BrowsePathResult",
+						schema: _qinwei_dsh_os_deploy_osDeploy_browsePath_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/dsh-os-deploy/src/index.ts",
+						"line": 218,
+						"column": 9
+					}
+				},
+				{
 					id: "@qinwei/dsh-os-deploy#osDeploy/cancelTask",
 					service: "osDeploy",
 					namespace: "osDeploy",
@@ -5568,7 +5614,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 339,
+						"line": 394,
 						"column": 9
 					}
 				},
@@ -5595,7 +5641,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 301,
+						"line": 356,
 						"column": 9
 					}
 				},
@@ -5622,7 +5668,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 239,
+						"line": 294,
 						"column": 9
 					}
 				},
@@ -5649,7 +5695,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 356,
+						"line": 411,
 						"column": 9
 					}
 				},
@@ -5676,7 +5722,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 221,
+						"line": 276,
 						"column": 9
 					}
 				},
@@ -5703,7 +5749,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 332,
+						"line": 387,
 						"column": 9
 					}
 				},
@@ -5730,7 +5776,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 256,
+						"line": 311,
 						"column": 9
 					}
 				},
@@ -5748,7 +5794,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 250,
+						"line": 305,
 						"column": 9
 					}
 				},
@@ -5766,7 +5812,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 176,
+						"line": 178,
 						"column": 9
 					}
 				},
@@ -5784,7 +5830,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 327,
+						"line": 382,
 						"column": 9
 					}
 				},
@@ -5811,7 +5857,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 262,
+						"line": 317,
 						"column": 9
 					}
 				},
@@ -5838,7 +5884,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 197,
+						"line": 252,
 						"column": 9
 					}
 				},
@@ -5856,7 +5902,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 149,
+						"line": 151,
 						"column": 9
 					}
 				},
@@ -5874,7 +5920,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 103,
+						"line": 105,
 						"column": 9
 					}
 				},
@@ -5892,7 +5938,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 90,
+						"line": 92,
 						"column": 9
 					}
 				},
@@ -5910,7 +5956,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 126,
+						"line": 128,
 						"column": 9
 					}
 				}
@@ -5956,6 +6002,26 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 .osd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
 .osd-device-card{border:1px solid rgba(128,128,128,.35);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px}
 .osd-device-selected{border-color:rgba(59,130,246,.6);background:rgba(59,130,246,.08)}
+/* 文件选择弹窗 */
+.osd-pick-row{display:flex;gap:6px;align-items:center}
+.osd-pick-path{font:inherit;padding:6px 8px;border:1px solid rgba(128,128,128,.4);border-radius:6px;background:transparent;min-width:220px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.9}
+.osd-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+.osd-modal{background:rgba(60,60,60,.92);backdrop-filter:blur(10px);border:1px solid rgba(128,128,128,.5);border-radius:12px;padding:14px 16px;width:min(720px,92vw);max-height:82vh;display:flex;flex-direction:column;gap:10px;color:inherit;box-shadow:0 12px 40px rgba(0,0,0,.4)}
+.osd-modal-h{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;font-weight:700}
+.osd-modal-crumbs{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px}
+.osd-crumb{padding:2px 8px;border-radius:6px;border:1px solid rgba(128,128,128,.4);cursor:pointer}
+.osd-crumb:hover{background:rgba(128,128,128,.2)}
+.osd-crumb-cur{background:rgba(59,130,246,.15);font-weight:600}
+.osd-modal-list{flex:1;min-height:200px;max-height:46vh;overflow:auto;border:1px solid rgba(128,128,128,.3);border-radius:8px;padding:4px}
+.osd-filerow{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:13px}
+.osd-filerow:hover{background:rgba(128,128,128,.15)}
+.osd-filerow-selected{background:rgba(59,130,246,.25)}
+.osd-filerow-icon{width:18px;text-align:center;flex:none}
+.osd-filerow-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.osd-filerow-size{flex:none;opacity:.6;font-size:11px}
+.osd-modal-foot{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.osd-link{font-size:12px;opacity:.7;cursor:pointer;text-decoration:underline}
+.osd-link:hover{opacity:1}
 `;
 		async function apply(ctx) {
 			await ctx.remote.$mount(TYPERT_REMOTE);
@@ -6081,6 +6147,69 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						...f,
 						[k]: v
 					}));
+				}
+				const [fileBrowser, setFileBrowser] = react.useState({
+					open: false,
+					path: "",
+					parent: null,
+					entries: [],
+					roots: [],
+					loading: false,
+					error: "",
+					selected: null,
+					truncated: false
+				});
+				const [isoFilterOnly, setIsoFilterOnly] = react.useState(true);
+				const [manualIsoInput, setManualIsoInput] = react.useState(false);
+				async function fbLoad(p) {
+					setFileBrowser((s) => ({
+						...s,
+						loading: true,
+						error: "",
+						selected: null
+					}));
+					try {
+						const r = unwrap(await remote.browsePath({ path: p || null }));
+						setFileBrowser((s) => ({
+							...s,
+							open: true,
+							path: r.path,
+							parent: r.parent,
+							entries: r.entries || [],
+							roots: r.roots || [],
+							loading: false,
+							error: r.error || "",
+							truncated: !!r.truncated
+						}));
+					} catch (e) {
+						setFileBrowser((s) => ({
+							...s,
+							loading: false,
+							error: String(e?.message || e)
+						}));
+					}
+				}
+				function fbOpen() {
+					fbLoad(null);
+				}
+				function fbClose() {
+					setFileBrowser((s) => ({
+						...s,
+						open: false
+					}));
+				}
+				function fbConfirm() {
+					const sel = fileBrowser.selected;
+					if (!sel) return;
+					setForm((f) => {
+						const name = (sel.split(/[\\/]/).pop() || sel).replace(/\.iso$/i, "");
+						return {
+							...f,
+							isoPath: sel,
+							isoName: f.isoName || name
+						};
+					});
+					fbClose();
 				}
 				async function doRegisterIso() {
 					setBusy(true);
@@ -6319,7 +6448,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						value: "debian",
 						label: "Debian"
 					}
-				], setF("vendor"))), h("div", { className: "osd-row" }, field("ISO 文件路径", form.isoPath || "", setF("isoPath"), "E:\\path\\to\\image.iso"), btn("注册", doRegisterIso, "osd-btn-primary", busy || !form.isoPath || !form.vendor))), h("div", { className: "osd-h" }, `已注册镜像 (${images.length})`), images.map((img) => h("div", {
+				], setF("vendor"))), h("div", { className: "osd-row" }, h("label", { className: "osd-field" }, h("span", { className: "osd-meta" }, "ISO 文件"), h("div", { className: "osd-pick-row" }, h("span", {
+					className: "osd-pick-path",
+					title: form.isoPath || ""
+				}, form.isoPath || "（未选择文件）"), btn("浏览…", fbOpen, "", busy), h("span", {
+					className: "osd-link",
+					onClick: () => setManualIsoInput(!manualIsoInput)
+				}, manualIsoInput ? "收起手动输入" : "手动输入路径"))), manualIsoInput && field("ISO 文件路径", form.isoPath || "", setF("isoPath"), "E:\\path\\to\\image.iso"), btn("注册", doRegisterIso, "osd-btn-primary", busy || !form.isoPath || !form.vendor))), h("div", { className: "osd-h" }, `已注册镜像 (${images.length})`), images.map((img) => h("div", {
 					key: img.id,
 					className: "osd-card"
 				}, h("div", { className: "osd-row" }, h("span", { className: "osd-name" }, img.name), h("span", { className: "osd-badge" }, img.vendor), img.extracted ? h("span", {
@@ -6361,7 +6496,61 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				})), setF("diskSn"))), h("div", { className: "osd-meta" }, "注意：安装会清空目标磁盘上的所有数据！")), h("div", { className: "osd-row" }, btn("创建安装任务", doCreateTask, "osd-btn-primary", busy || !svc.running || !form.imageId || !form.rootPassword || !form.useServerManager && !form.bmcHost), !svc.running && h("span", {
 					className: "osd-meta",
 					style: { color: "#f5c542" }
-				}, "需先启动部署服务"), busy && h("span", { className: "osd-meta" }, "处理中..."))));
+				}, "需先启动部署服务"), busy && h("span", { className: "osd-meta" }, "处理中..."))), fileBrowser.open && h("div", {
+					className: "osd-modal-backdrop",
+					onClick: fbClose
+				}, h("div", {
+					className: "osd-modal",
+					onClick: (e) => e.stopPropagation()
+				}, h("div", { className: "osd-modal-h" }, h("span", null, "选择 ISO 镜像文件"), h("span", {
+					className: "osd-link",
+					onClick: fbClose
+				}, "✕ 关闭")), h("div", { className: "osd-modal-crumbs" }, h("span", {
+					className: "osd-crumb",
+					title: fileBrowser.path,
+					onClick: () => fbLoad(null)
+				}, "⌂ 主目录"), fileBrowser.parent && h("span", {
+					className: "osd-crumb",
+					onClick: () => fbLoad(fileBrowser.parent)
+				}, "⬆ 上级"), h("span", {
+					className: "osd-crumb osd-crumb-cur",
+					title: fileBrowser.path
+				}, fileBrowser.path || "…"), fileBrowser.truncated && h("span", { className: "osd-meta" }, "（目录过大，仅显示前 2000 项）")), fileBrowser.roots.length > 1 && h("div", { className: "osd-modal-crumbs" }, fileBrowser.roots.map((r) => h("span", {
+					key: r,
+					className: "osd-crumb",
+					onClick: () => fbLoad(r)
+				}, r.endsWith("\\") ? r.slice(0, -1) : r))), h("div", { className: "osd-row" }, h("label", {
+					className: "osd-chip" + (isoFilterOnly ? " osd-chip-on" : ""),
+					onClick: () => setIsoFilterOnly(!isoFilterOnly)
+				}, "仅显示 .iso 文件"), fileBrowser.loading && h("span", { className: "osd-meta" }, "加载中…"), fileBrowser.error && h("span", {
+					className: "osd-meta",
+					style: { color: "#e5484d" }
+				}, fileBrowser.error)), h("div", { className: "osd-modal-list" }, fileBrowser.entries.filter((e) => e.isDir || !isoFilterOnly || /\.iso$/i.test(e.name)).map((e) => h("div", {
+					key: e.path,
+					className: "osd-filerow" + (fileBrowser.selected === e.path ? " osd-filerow-selected" : ""),
+					onClick: () => {
+						if (e.isDir) fbLoad(e.path);
+						else setFileBrowser((s) => ({
+							...s,
+							selected: e.path
+						}));
+					},
+					onDoubleClick: () => {
+						if (!e.isDir) fbConfirm();
+					}
+				}, h("span", { className: "osd-filerow-icon" }, e.isDir ? "📁" : "📄"), h("span", { className: "osd-filerow-name" }, e.name), !e.isDir && e.sizeBytes != null && h("span", { className: "osd-filerow-size" }, `${(e.sizeBytes / 1073741824).toFixed(2)} GB`))), !fileBrowser.loading && fileBrowser.entries.filter((e) => e.isDir || !isoFilterOnly || /\.iso$/i.test(e.name)).length === 0 && h("div", {
+					className: "osd-meta",
+					style: { padding: "8px" }
+				}, "此目录没有 .iso 文件（可切换显示全部文件）")), h("div", { className: "osd-modal-foot" }, h("span", {
+					className: "osd-meta",
+					style: {
+						marginRight: "auto",
+						overflow: "hidden",
+						textOverflow: "ellipsis",
+						maxWidth: "50%"
+					},
+					title: fileBrowser.selected || ""
+				}, fileBrowser.selected ? `已选: ${fileBrowser.selected.split(/[\\/]/).pop()}` : "未选择文件"), btn("取消", fbClose), btn("选择此文件", fbConfirm, "osd-btn-primary", !fileBrowser.selected)))));
 			}
 			class Boundary extends react.Component {
 				state = { error: null };

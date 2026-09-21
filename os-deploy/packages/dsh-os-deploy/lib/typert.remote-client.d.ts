@@ -3,10 +3,11 @@ import type {
   RemoteResult,
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
-import type { CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, ExtractImageRequest, ExtractImageResult, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, ServiceControlResult, ServiceStatusResult } from '@qinwei/dsh-os-deploy/types'
+import type { BrowsePathRequest, BrowsePathResult, CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, ExtractImageRequest, ExtractImageResult, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, ServiceControlResult, ServiceStatusResult } from '@qinwei/dsh-os-deploy/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$6f734465706c6f79 {
+    browsePath: (req: BrowsePathRequest) => Promise<RemoteResult<BrowsePathResult>>
     cancelTask: (req: CancelTaskRequest) => Promise<RemoteResult<CancelTaskResult>>
     createTask: (req: CreateTaskRequest) => Promise<RemoteResult<CreateTaskResult>>
     deleteImage: (req: DeleteImageRequest) => Promise<RemoteResult<DeleteImageResult>>
@@ -25,6 +26,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     serviceStop: () => Promise<RemoteResult<ServiceControlResult>>
   }
   interface TypertRemoteMap {
+    'osDeploy/browsePath': (req: BrowsePathRequest) => Promise<RemoteResult<BrowsePathResult>>
     'osDeploy/cancelTask': (req: CancelTaskRequest) => Promise<RemoteResult<CancelTaskResult>>
     'osDeploy/createTask': (req: CreateTaskRequest) => Promise<RemoteResult<CreateTaskResult>>
     'osDeploy/deleteImage': (req: DeleteImageRequest) => Promise<RemoteResult<DeleteImageResult>>

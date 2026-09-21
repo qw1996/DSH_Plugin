@@ -163,5 +163,23 @@ interface ServiceControlResult {
   status?: ServiceStatusResult;
   error?: string;
 }
+interface BrowsePathRequest {
+  path?: string | null;
+}
+interface FileEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  sizeBytes: number | null;
+}
+interface BrowsePathResult {
+  path: string;
+  parent: string | null;
+  home: string;
+  roots: string[];
+  entries: FileEntry[];
+  truncated: boolean;
+  error?: string;
+}
 //#endregion
-export { CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, DeployTask, DistroVendor, ExtractImageRequest, ExtractImageResult, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, InstallComponent, IsoImage, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, LogEntry, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, ServiceControlResult, ServiceStatusResult, TargetDevice, TaskStatus };
+export { BrowsePathRequest, BrowsePathResult, CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, DeployTask, DistroVendor, ExtractImageRequest, ExtractImageResult, FileEntry, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, InstallComponent, IsoImage, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, LogEntry, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, ServiceControlResult, ServiceStatusResult, TargetDevice, TaskStatus };

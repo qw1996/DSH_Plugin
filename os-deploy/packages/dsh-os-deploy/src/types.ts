@@ -180,3 +180,25 @@ export interface ServiceControlResult {
   status?: ServiceStatusResult
   error?: string
 }
+
+// ---------- 文件浏览（镜像选择弹窗） ----------
+export interface BrowsePathRequest {
+  path?: string | null
+}
+
+export interface FileEntry {
+  name: string
+  path: string
+  isDir: boolean
+  sizeBytes: number | null
+}
+
+export interface BrowsePathResult {
+  path: string
+  parent: string | null
+  home: string
+  roots: string[]
+  entries: FileEntry[]
+  truncated: boolean
+  error?: string
+}

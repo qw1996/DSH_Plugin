@@ -3,6 +3,7 @@ import { Service } from "@deepseek-ai/cordis";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import * as crypto from "crypto";
 import * as http from "http";
 import * as https from "https";
@@ -550,6 +551,7 @@ let OsDeployService = (() => {
 	let _serviceStop_decorators;
 	let _serviceRestart_decorators;
 	let _listServers_decorators;
+	let _browsePath_decorators;
 	let _registerIso_decorators;
 	let _extractImage_decorators;
 	let _deleteImage_decorators;
@@ -569,6 +571,7 @@ let OsDeployService = (() => {
 			_serviceStop_decorators = [Remote("serviceStop")];
 			_serviceRestart_decorators = [Remote("serviceRestart")];
 			_listServers_decorators = [Remote("listServers")];
+			_browsePath_decorators = [Remote("browsePath")];
 			_registerIso_decorators = [Remote("registerIso")];
 			_extractImage_decorators = [Remote("extractImage")];
 			_deleteImage_decorators = [Remote("deleteImage")];
@@ -632,6 +635,17 @@ let OsDeployService = (() => {
 				access: {
 					has: (obj) => "listServers" in obj,
 					get: (obj) => obj.listServers
+				},
+				metadata: _metadata
+			}, null, _instanceExtraInitializers);
+			__esDecorate(this, null, _browsePath_decorators, {
+				kind: "method",
+				name: "browsePath",
+				static: false,
+				private: false,
+				access: {
+					has: (obj) => "browsePath" in obj,
+					get: (obj) => obj.browsePath
 				},
 				metadata: _metadata
 			}, null, _instanceExtraInitializers);
@@ -902,6 +916,75 @@ let OsDeployService = (() => {
 				}
 			} catch (e) {}
 			return { servers: [] };
+		}
+		/** 列出可用根：win32 枚举存在的盘符，其余平台返回 '/'。 */
+		listRoots() {
+			if (process.platform === "win32") {
+				const out = [];
+				for (let c = 65; c <= 90; c++) {
+					const drive = String.fromCharCode(c) + ":\\";
+					try {
+						fs.accessSync(drive);
+						out.push(drive);
+					} catch {}
+				}
+				return out;
+			}
+			return ["/"];
+		}
+		/**
+		* 浏览目录：返回子目录与文件（含大小），供面板「选择 ISO」弹窗使用。
+		* 无 path 时从用户主目录开始；不可读目录返回 error（面包屑仍可回退）。
+		* 单层最多返回 2000 条（truncated 标记），防御超大目录拖慢 UI。
+		*/
+		async browsePath(req) {
+			const home = os.homedir();
+			const roots = this.listRoots();
+			const empty = (p, err) => ({
+				path: p,
+				parent: null,
+				home,
+				roots,
+				entries: [],
+				truncated: false,
+				error: err
+			});
+			try {
+				let target = req.path && req.path.trim() ? path.resolve(req.path.trim()) : home;
+				if (!fs.statSync(target).isDirectory()) target = path.dirname(target);
+				const parent = path.dirname(target) === target ? null : path.dirname(target);
+				const dirents = fs.readdirSync(target, { withFileTypes: true });
+				const entries = [];
+				for (const d of dirents) {
+					const full = path.join(target, d.name);
+					let isDir = d.isDirectory();
+					let sizeBytes = null;
+					try {
+						const s2 = fs.statSync(full);
+						isDir = s2.isDirectory();
+						if (!isDir) sizeBytes = s2.size;
+					} catch {}
+					entries.push({
+						name: d.name,
+						path: full,
+						isDir,
+						sizeBytes
+					});
+					if (entries.length >= 2e3) break;
+				}
+				const truncated = entries.length >= 2e3 && dirents.length > entries.length;
+				entries.sort((a, b) => a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1);
+				return {
+					path: target,
+					parent,
+					home,
+					roots,
+					entries,
+					truncated
+				};
+			} catch (e) {
+				return empty(home, String(e?.message || e));
+			}
 		}
 		async registerIso(req) {
 			try {
@@ -1237,10 +1320,14 @@ let OsDeployService = (() => {
 		}
 		async getLocalIp() {
 			return new Promise((resolve) => {
-				const ifs = __require("os").networkInterfaces();
-				for (const name of Object.keys(ifs)) for (const i of ifs[name]) if (i.family === "IPv4" && !i.internal) {
-					resolve(i.address);
-					return;
+				const ifs = os.networkInterfaces();
+				for (const name of Object.keys(ifs)) {
+					const list = ifs[name];
+					if (!list) continue;
+					for (const i of list) if (i.family === "IPv4" && !i.internal) {
+						resolve(i.address);
+						return;
+					}
 				}
 				resolve("127.0.0.1");
 			});

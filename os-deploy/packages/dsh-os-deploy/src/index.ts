@@ -4,6 +4,7 @@ import { Service } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as os from 'os'
 import * as crypto from 'crypto'
 import type {
   IsoImage, DeployTask, TargetDevice, InstallComponent,
@@ -19,6 +20,7 @@ import type {
   DeleteImageRequest, DeleteImageResult,
   GetServerListResult,
   ServiceStatusResult, ServiceControlResult,
+  BrowsePathRequest, BrowsePathResult, FileEntry,
 } from './types'
 import {
   RedfishClient, DeployHttpServer, DeployRunner, DeploySpec,
@@ -191,6 +193,59 @@ export default class OsDeployService extends TypertRemoteService {
       }
     } catch (e) { /* ignore */ }
     return { servers: [] }
+  }
+
+  // ---------- @Remote: 文件浏览（镜像选择弹窗） ----------
+  /** 列出可用根：win32 枚举存在的盘符，其余平台返回 '/'。 */
+  private listRoots(): string[] {
+    if (process.platform === 'win32') {
+      const out: string[] = []
+      for (let c = 65; c <= 90; c++) {
+        const drive = String.fromCharCode(c) + ':\\'
+        try { fs.accessSync(drive); out.push(drive) } catch { /* 盘符不存在 */ }
+      }
+      return out
+    }
+    return ['/']
+  }
+
+  /**
+   * 浏览目录：返回子目录与文件（含大小），供面板「选择 ISO」弹窗使用。
+   * 无 path 时从用户主目录开始；不可读目录返回 error（面包屑仍可回退）。
+   * 单层最多返回 2000 条（truncated 标记），防御超大目录拖慢 UI。
+   */
+  @Remote('browsePath')
+  async browsePath(req: BrowsePathRequest): Promise<BrowsePathResult> {
+    const home = os.homedir()
+    const roots = this.listRoots()
+    const empty = (p: string, err?: string): BrowsePathResult => ({
+      path: p, parent: null, home, roots, entries: [], truncated: false, error: err,
+    })
+    try {
+      let target = req.path && req.path.trim() ? path.resolve(req.path.trim()) : home
+      let st = fs.statSync(target)
+      if (!st.isDirectory()) target = path.dirname(target)
+      const parent = path.dirname(target) === target ? null : path.dirname(target)
+      const dirents = fs.readdirSync(target, { withFileTypes: true })
+      const entries: FileEntry[] = []
+      for (const d of dirents) {
+        const full = path.join(target, d.name)
+        let isDir = d.isDirectory()
+        let sizeBytes: number | null = null
+        try {
+          const s2 = fs.statSync(full) // 符号链接跟随目标
+          isDir = s2.isDirectory()
+          if (!isDir) sizeBytes = s2.size
+        } catch { /* 断链/不可读 → 仍列出目录项，跳过属性 */ }
+        entries.push({ name: d.name, path: full, isDir, sizeBytes })
+        if (entries.length >= 2000) break
+      }
+      const truncated = entries.length >= 2000 && dirents.length > entries.length
+      entries.sort((a, b) => (a.isDir === b.isDir) ? a.name.localeCompare(b.name) : (a.isDir ? -1 : 1))
+      return { path: target, parent, home, roots, entries, truncated }
+    } catch (e: any) {
+      return empty(home, String(e?.message || e))
+    }
   }
 
   @Remote('registerIso')
@@ -500,10 +555,11 @@ export default class OsDeployService extends TypertRemoteService {
 
   private async getLocalIp(): Promise<string> {
     return new Promise((resolve) => {
-      const os = require('os')
       const ifs = os.networkInterfaces()
       for (const name of Object.keys(ifs)) {
-        for (const i of ifs[name]) {
+        const list = ifs[name]
+        if (!list) continue
+        for (const i of list) {
           if (i.family === 'IPv4' && !i.internal) {
             resolve(i.address)
             return
@@ -515,5 +571,4 @@ export default class OsDeployService extends TypertRemoteService {
   }
 }
 
-declare const process: { cwd(): string }
-declare const os: { tmpdir(): string }
+declare const process: { cwd(): string; platform: string }

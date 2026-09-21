@@ -52,6 +52,26 @@ const CSS = `
 .osd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
 .osd-device-card{border:1px solid rgba(128,128,128,.35);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px}
 .osd-device-selected{border-color:rgba(59,130,246,.6);background:rgba(59,130,246,.08)}
+/* 文件选择弹窗 */
+.osd-pick-row{display:flex;gap:6px;align-items:center}
+.osd-pick-path{font:inherit;padding:6px 8px;border:1px solid rgba(128,128,128,.4);border-radius:6px;background:transparent;min-width:220px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.9}
+.osd-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+.osd-modal{background:rgba(60,60,60,.92);backdrop-filter:blur(10px);border:1px solid rgba(128,128,128,.5);border-radius:12px;padding:14px 16px;width:min(720px,92vw);max-height:82vh;display:flex;flex-direction:column;gap:10px;color:inherit;box-shadow:0 12px 40px rgba(0,0,0,.4)}
+.osd-modal-h{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;font-weight:700}
+.osd-modal-crumbs{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px}
+.osd-crumb{padding:2px 8px;border-radius:6px;border:1px solid rgba(128,128,128,.4);cursor:pointer}
+.osd-crumb:hover{background:rgba(128,128,128,.2)}
+.osd-crumb-cur{background:rgba(59,130,246,.15);font-weight:600}
+.osd-modal-list{flex:1;min-height:200px;max-height:46vh;overflow:auto;border:1px solid rgba(128,128,128,.3);border-radius:8px;padding:4px}
+.osd-filerow{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:13px}
+.osd-filerow:hover{background:rgba(128,128,128,.15)}
+.osd-filerow-selected{background:rgba(59,130,246,.25)}
+.osd-filerow-icon{width:18px;text-align:center;flex:none}
+.osd-filerow-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.osd-filerow-size{flex:none;opacity:.6;font-size:11px}
+.osd-modal-foot{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.osd-link{font-size:12px;opacity:.7;cursor:pointer;text-decoration:underline}
+.osd-link:hover{opacity:1}
 `
 
 export async function apply(ctx: any) {
@@ -163,6 +183,39 @@ export async function apply(ctx: any) {
     }, [form.vendor])
 
     function setF(k: string) { return (v: string) => setForm((f: any) => ({ ...f, [k]: v })) }
+
+    // ---------- ISO 文件选择弹窗 ----------
+    const [fileBrowser, setFileBrowser] = React.useState<{
+      open: boolean; path: string; parent: string | null; entries: any[];
+      roots: string[]; loading: boolean; error: string; selected: string | null; truncated: boolean;
+    }>({ open: false, path: '', parent: null, entries: [], roots: [], loading: false, error: '', selected: null, truncated: false })
+    const [isoFilterOnly, setIsoFilterOnly] = React.useState(true)
+    const [manualIsoInput, setManualIsoInput] = React.useState(false)
+
+    async function fbLoad(p: string | null) {
+      setFileBrowser((s: any) => ({ ...s, loading: true, error: '', selected: null }))
+      try {
+        const r = unwrap(await remote.browsePath({ path: p || null }))
+        setFileBrowser((s: any) => ({
+          ...s, open: true, path: r.path, parent: r.parent, entries: r.entries || [],
+          roots: r.roots || [], loading: false, error: r.error || '', truncated: !!r.truncated,
+        }))
+      } catch (e: any) {
+        setFileBrowser((s: any) => ({ ...s, loading: false, error: String(e?.message || e) }))
+      }
+    }
+    function fbOpen() { fbLoad(null) }
+    function fbClose() { setFileBrowser((s: any) => ({ ...s, open: false })) }
+    function fbConfirm() {
+      const sel = fileBrowser.selected
+      if (!sel) return
+      setForm((f: any) => {
+        const base = sel.split(/[\\/]/).pop() || sel
+        const name = base.replace(/\.iso$/i, '')
+        return { ...f, isoPath: sel, isoName: f.isoName || name }
+      })
+      fbClose()
+    }
 
     async function doRegisterIso() {
       setBusy(true); setMsg('')
@@ -370,7 +423,15 @@ export async function apply(ctx: any) {
             ], setF('vendor')),
           ),
           h('div', { className: 'osd-row' },
-            field('ISO 文件路径', form.isoPath || '', setF('isoPath'), 'E:\\path\\to\\image.iso'),
+            h('label', { className: 'osd-field' },
+              h('span', { className: 'osd-meta' }, 'ISO 文件'),
+              h('div', { className: 'osd-pick-row' },
+                h('span', { className: 'osd-pick-path', title: form.isoPath || '' }, form.isoPath || '（未选择文件）'),
+                btn('浏览…', fbOpen, '', busy),
+                h('span', { className: 'osd-link', onClick: () => setManualIsoInput(!manualIsoInput) }, manualIsoInput ? '收起手动输入' : '手动输入路径'),
+              ),
+            ),
+            manualIsoInput && field('ISO 文件路径', form.isoPath || '', setF('isoPath'), 'E:\\path\\to\\image.iso'),
             btn('注册', doRegisterIso, 'osd-btn-primary', busy || !form.isoPath || !form.vendor),
           ),
         ),
@@ -482,6 +543,60 @@ export async function apply(ctx: any) {
           btn('创建安装任务', doCreateTask, 'osd-btn-primary', busy || !svc.running || !form.imageId || !form.rootPassword || (!form.useServerManager && !form.bmcHost)),
           !svc.running && h('span', { className: 'osd-meta', style: { color: '#f5c542' } }, '需先启动部署服务'),
           busy && h('span', { className: 'osd-meta' }, '处理中...'),
+        ),
+      ),
+
+      // ===== ISO 文件选择弹窗 =====
+      fileBrowser.open && h('div', { className: 'osd-modal-backdrop', onClick: fbClose },
+        h('div', { className: 'osd-modal', onClick: (e: any) => e.stopPropagation() },
+          h('div', { className: 'osd-modal-h' },
+            h('span', null, '选择 ISO 镜像文件'),
+            h('span', { className: 'osd-link', onClick: fbClose }, '✕ 关闭'),
+          ),
+          // 面包屑 + 上级 + 主目录
+          h('div', { className: 'osd-modal-crumbs' },
+            h('span', { className: 'osd-crumb', title: fileBrowser.path, onClick: () => fbLoad(null) }, '⌂ 主目录'),
+            fileBrowser.parent && h('span', { className: 'osd-crumb', onClick: () => fbLoad(fileBrowser.parent) }, '⬆ 上级'),
+            h('span', { className: 'osd-crumb osd-crumb-cur', title: fileBrowser.path }, fileBrowser.path || '…'),
+            fileBrowser.truncated && h('span', { className: 'osd-meta' }, '（目录过大，仅显示前 2000 项）'),
+          ),
+          // win32 盘符切换
+          fileBrowser.roots.length > 1 && h('div', { className: 'osd-modal-crumbs' },
+            fileBrowser.roots.map((r: string) => h('span', {
+              key: r, className: 'osd-crumb', onClick: () => fbLoad(r),
+            }, r.endsWith('\\') ? r.slice(0, -1) : r)),
+          ),
+          // 过滤与提示
+          h('div', { className: 'osd-row' },
+            h('label', { className: 'osd-chip' + (isoFilterOnly ? ' osd-chip-on' : ''), onClick: () => setIsoFilterOnly(!isoFilterOnly) },
+              '仅显示 .iso 文件'),
+            fileBrowser.loading && h('span', { className: 'osd-meta' }, '加载中…'),
+            fileBrowser.error && h('span', { className: 'osd-meta', style: { color: '#e5484d' } }, fileBrowser.error),
+          ),
+          // 文件列表：目录可进入，文件可选中
+          h('div', { className: 'osd-modal-list' },
+            fileBrowser.entries
+              .filter((e: any) => e.isDir || !isoFilterOnly || /\.iso$/i.test(e.name))
+              .map((e: any) => h('div', {
+                key: e.path,
+                className: 'osd-filerow' + (fileBrowser.selected === e.path ? ' osd-filerow-selected' : ''),
+                onClick: () => { if (e.isDir) fbLoad(e.path); else setFileBrowser((s: any) => ({ ...s, selected: e.path })) },
+                onDoubleClick: () => { if (!e.isDir) fbConfirm() },
+              },
+                h('span', { className: 'osd-filerow-icon' }, e.isDir ? '📁' : '📄'),
+                h('span', { className: 'osd-filerow-name' }, e.name),
+                !e.isDir && e.sizeBytes != null && h('span', { className: 'osd-filerow-size' }, `${(e.sizeBytes / 1073741824).toFixed(2)} GB`),
+              )),
+            !fileBrowser.loading && fileBrowser.entries
+              .filter((e: any) => e.isDir || !isoFilterOnly || /\.iso$/i.test(e.name)).length === 0
+              && h('div', { className: 'osd-meta', style: { padding: '8px' } }, '此目录没有 .iso 文件（可切换显示全部文件）'),
+          ),
+          h('div', { className: 'osd-modal-foot' },
+            h('span', { className: 'osd-meta', style: { marginRight: 'auto', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '50%' },
+              title: fileBrowser.selected || '' }, fileBrowser.selected ? `已选: ${fileBrowser.selected.split(/[\\/]/).pop()}` : '未选择文件'),
+            btn('取消', fbClose),
+            btn('选择此文件', fbConfirm, 'osd-btn-primary', !fileBrowser.selected),
+          ),
         ),
       ),
     )
