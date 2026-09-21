@@ -66,7 +66,11 @@ export async function apply(ctx: any) {
   })
 
   const h = React.createElement
-  const remote = ctx.remote.osDeploy
+  // 注意：不能用 ctx.remote.osDeploy —— 属性链经 cordis 代理按
+  // reflect.props['remote.osDeploy'] 解析服务，要求在 inject 中声明；
+  // 而本插件自挂载该命名空间，注入会死锁。ctx.get() 是无注入门禁的
+  // 可选查找（strict 模式确保提供方 fiber 已激活）。
+  const remote = ctx.get('remote.osDeploy')
 
   function fmt(ts: number | null | undefined) {
     if (!ts) return '—'

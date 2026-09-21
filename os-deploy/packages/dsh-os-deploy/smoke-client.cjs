@@ -17,12 +17,13 @@ console.log('apply 是异步函数:', out.apply.constructor.name === 'AsyncFunct
 let mounted = null;
 const fakeCtx = {
   effect: () => () => {},
+  get: (name) => (name === 'remote.osDeploy' ? fakeNs : undefined),
   remote: {
     $mount: async (c) => { mounted = c; return async () => {}; },
-    osDeploy: { serviceStatus: async () => ({ running: false }) },
   },
   slots: { inject: () => {}, register: () => () => {} },
 };
+const fakeNs = { serviceStatus: async () => ({ running: false }) };
 out.apply(fakeCtx).then(() => {
   console.log('挂载的包名:', mounted?.package);
   console.log('描述符数量:', mounted?.descriptors?.length);

@@ -5966,7 +5966,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				return () => style.remove();
 			});
 			const h = react.createElement;
-			const remote = ctx.remote.osDeploy;
+			const remote = ctx.get("remote.osDeploy");
 			function fmt(ts) {
 				if (!ts) return "—";
 				try {
