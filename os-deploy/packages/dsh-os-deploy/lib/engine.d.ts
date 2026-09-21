@@ -118,6 +118,12 @@ declare class RedfishClient {
   }>;
   getSystem(): Promise<any>;
   getStorage(): Promise<any>;
+  /**
+   * 从 Chassis/Drives 枚举物理盘。鲲鹏 iBMC 等固件不实现
+   * Systems/1/Storage（404），磁盘挂在 Chassis 下：
+   *   /redfish/v1/Chassis/{id} → Drives → /redfish/v1/Chassis/{id}/Drives/{disk}
+   */
+  getChassisDrives(): Promise<any[]>;
   patchSystem(body: any): Promise<void>;
   setBootOnce(target: string): Promise<void>;
   power(action: string): Promise<void>;

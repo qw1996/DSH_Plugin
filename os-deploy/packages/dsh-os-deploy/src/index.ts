@@ -369,6 +369,20 @@ export default class OsDeployService extends TypertRemoteService {
           }
         }
       }
+      // 回退：Systems/Storage 不可用（如鲲鹏 iBMC 404）时从 Chassis/Drives 枚举
+      if (disks.length === 0) {
+        const drives = await rf.getChassisDrives()
+        for (const d of drives) {
+          disks.push({
+            id: d.Id || '',
+            name: d.Name || d.Id || '',
+            serial: (d.SerialNumber || '').trim(),
+            capacityBytes: d.CapacityBytes || 0,
+            media: d.MediaType || 'HDD',
+            protocol: d.Protocol || '',
+          })
+        }
+      }
       // Try to get NIC info from EthernetInterfaces
       try {
         const eth = await rf.get('/redfish/v1/Systems/1/EthernetInterfaces')

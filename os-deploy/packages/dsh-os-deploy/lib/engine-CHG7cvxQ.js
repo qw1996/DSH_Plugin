@@ -723,6 +723,31 @@ var RedfishClient = class {
 			return null;
 		}
 	}
+	/**
+	* 从 Chassis/Drives 枚举物理盘。鲲鹏 iBMC 等固件不实现
+	* Systems/1/Storage（404），磁盘挂在 Chassis 下：
+	*   /redfish/v1/Chassis/{id} → Drives → /redfish/v1/Chassis/{id}/Drives/{disk}
+	*/
+	async getChassisDrives() {
+		try {
+			const col = await this.get("/redfish/v1/Chassis");
+			if (col.status !== 200 || !col.json) return [];
+			const drives = [];
+			for (const m of col.json.Members || []) {
+				const ch = await this.get(m["@odata.id"]);
+				if (ch.status !== 200 || !ch.json || !ch.json.Drives) continue;
+				const dcol = await this.get(ch.json.Drives["@odata.id"]);
+				if (dcol.status !== 200 || !dcol.json) continue;
+				for (const dl of dcol.json.Members || []) {
+					const dr = await this.get(dl["@odata.id"]);
+					if (dr.status === 200 && dr.json) drives.push(dr.json);
+				}
+			}
+			return drives;
+		} catch (e) {
+			return [];
+		}
+	}
 	async patchSystem(body) {
 		const g = await this.get("/redfish/v1/Systems/1");
 		const etag = g.headers && g.headers["etag"];

@@ -1,4 +1,4 @@
-import { d as DEFAULT_TLS_CERT, f as DEFAULT_TLS_KEY, i as extractIso, n as DeployRunner, r as RedfishClient, t as DeployHttpServer, u as getRouteIp } from "./engine-DEu0st7h.js";
+import { d as DEFAULT_TLS_CERT, f as DEFAULT_TLS_KEY, i as extractIso, n as DeployRunner, r as RedfishClient, t as DeployHttpServer, u as getRouteIp } from "./engine-CHG7cvxQ.js";
 import { Service } from "@deepseek-ai/cordis";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import * as fs from "fs";
@@ -734,6 +734,17 @@ let OsDeployService = (() => {
 					media: d.MediaType || "HDD",
 					protocol: d.Protocol || ""
 				});
+				if (disks.length === 0) {
+					const drives = await rf.getChassisDrives();
+					for (const d of drives) disks.push({
+						id: d.Id || "",
+						name: d.Name || d.Id || "",
+						serial: (d.SerialNumber || "").trim(),
+						capacityBytes: d.CapacityBytes || 0,
+						media: d.MediaType || "HDD",
+						protocol: d.Protocol || ""
+					});
+				}
 				try {
 					const eth = await rf.get("/redfish/v1/Systems/1/EthernetInterfaces");
 					if (eth.status === 200 && eth.json.Members) {
