@@ -785,13 +785,13 @@ let OsDeployService = (() => {
 			if (sp && typeof sp.workspaceRoot === "string" && sp.workspaceRoot) this.root = sp.workspaceRoot.replace(/[\\/]+$/, "");
 			this.dataFile = this.root ? path.join(this.root, "dsh-os-deploy-state.json") : null;
 			this.load();
+			ctx.on("dispose", () => {
+				if (this.httpServer) this.httpServer.stop();
+				for (const [, r] of this.runners) r.cancel();
+			});
 		}
 		async [Service.init]() {
 			console.log("[osdeploy] service loaded (idle) — 在面板点击「启动」后才会开启部署服务");
-		}
-		async [Service.dispose]() {
-			if (this.httpServer) this.httpServer.stop();
-			for (const [, r] of this.runners) r.cancel();
 		}
 		async serviceStatus() {
 			return {

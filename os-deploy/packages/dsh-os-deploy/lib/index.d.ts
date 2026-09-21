@@ -3,7 +3,6 @@ import { Service } from "@deepseek-ai/cordis";
 import { TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 //#region src/index.d.ts
 declare class OsDeployService extends TypertRemoteService {
-  [Service.dispose]: () => Promise<void>;
   static inject: string[];
   images: IsoImage[];
   tasks: Map<string, DeployTask>;

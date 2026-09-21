@@ -360,7 +360,7 @@ export class DeployHttpServer {
 
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.server = http.createServer((req, res) => {
+      this.server = http.createServer((req: http.IncomingMessage, res: http.ServerResponse) => {
         try { this.handle(req, res) } catch (e) {
           res.writeHead(500); res.end('error')
         }

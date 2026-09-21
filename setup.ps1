@@ -1,4 +1,4 @@
-﻿# setup.ps1 — DSH_Plugin 一键安装（git clone 后在仓库根目录运行）
+# setup.ps1 — DSH_Plugin 一键安装（git clone 后在仓库根目录运行）
 #
 # 用法：
 #   # 装全部（server-manager + experience）
@@ -123,7 +123,8 @@ if ($wanted -contains 'experience') {
 # ---------------- os-deploy ----------------
 if ($wanted -contains 'os-deploy') {
   Write-Host '[os-deploy] install package' -ForegroundColor Cyan
-  Install-PmPkg (Join-Path $repoRoot 'os-deploy\dsh-os-deploy')
+  # 包位于 packages/ 下（typert-generator 工作区布局要求）
+  Install-PmPkg (Join-Path $repoRoot 'os-deploy\packages\dsh-os-deploy')
   Write-Host '[os-deploy] mount host row' -ForegroundColor Cyan
   Add-PatchFromFile -PatchFile (Join-Path $repoRoot 'os-deploy\composition\host.patch.yml') -TargetFile (Join-Path $profileDir 'cordis.patch.yml') -Marker 'os-deploy'
 }

@@ -59,7 +59,7 @@ export function apply(ctx: any) {
     try { return new Date(ts).toLocaleString() } catch (e) { return String(ts) }
   }
 
-  function btn(label: string, onClick: () => void, cls?: string, disabled?: boolean) {
+  function btn(label: string, onClick: (e?: any) => void, cls?: string, disabled?: boolean) {
     return h('button', { className: 'osd-btn' + (cls ? ' ' + cls : ''), onClick, disabled: !!disabled }, label)
   }
 

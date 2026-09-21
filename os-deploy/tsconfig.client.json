@@ -1,0 +1,33 @@
+{
+  // typert-generator 工作区聚合（Client 面）。os-deploy 的 client 半（src/client.ts）
+  // 无 @Remote/Cordis 增强 → hasPackageSurface 过滤后不产出 client artifact，
+  // 此文件只为 client 面 program 提供编译选项（analyze() 会读取它）。
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek-ai/cordis": ["./vendor/cordis/lib/types/index.d.ts"],
+      "@deepseek-ai/cosmokit": ["./vendor/cosmokit/lib/types/index.d.ts"],
+      "@standard-schema/spec": ["./vendor/standard-schema/spec/dist/index.d.ts"],
+      "@deepseek-ai/dsh-typert-protocol": ["./packages/dsh-typert-protocol/src/index.ts"],
+      "@deepseek-ai/dsh-typert-protocol/types": ["./packages/dsh-typert-protocol/src/types.ts"]
+    }
+  },
+  "files": [
+    "packages/dsh-typert-protocol/src/index.ts"
+  ],
+  "references": [
+    { "path": "packages/dsh-os-deploy" },
+    { "path": "packages/dsh-typert-protocol" }
+  ]
+}

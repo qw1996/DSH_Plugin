@@ -13,5 +13,6 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-os-deploy/dsh-os-deploy/node_modules/
+# os-deploy 工作区（typert-generator 布局：包在 packages/ 下）
+os-deploy/packages/*/node_modules/
 

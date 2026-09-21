@@ -71,17 +71,18 @@ export default class OsDeployService extends TypertRemoteService {
     }
     this.dataFile = this.root ? path.join(this.root, 'dsh-os-deploy-state.json') : null
     this.load()
+    // cordis Service 没有 [Service.dispose] 符号（服务随 fiber 自动注销），
+    // 清理逻辑挂在 Context 的 dispose 事件上。
+    ctx.on('dispose', () => {
+      if (this.httpServer) this.httpServer.stop()
+      for (const [, r] of this.runners) r.cancel()
+    })
   }
 
   async [Service.init]() {
     // 轻量启动：只加载持久化状态。HTTP 仓库与任务队列由 serviceStart() 按需拉起，
     // 保证 DSH 启动速度不受部署服务影响（默认不启动）。
     console.log('[osdeploy] service loaded (idle) — 在面板点击「启动」后才会开启部署服务')
-  }
-
-  async [Service.dispose]() {
-    if (this.httpServer) this.httpServer.stop()
-    for (const [, r] of this.runners) r.cancel()
   }
 
   // ---------- @Remote: 服务控制 ----------

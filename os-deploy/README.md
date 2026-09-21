@@ -67,10 +67,24 @@ powershell -ExecutionPolicy Bypass -File setup.ps1 -Plugins os-deploy
 ## 构建（改源码后）
 
 ```bash
-cd os-deploy/dsh-os-deploy
+cd os-deploy/packages/dsh-os-deploy
 npm install --cache <本地缓存目录>
 npm run bundle
 ```
+
+构建说明：
+
+- 包位于 `os-deploy/packages/dsh-os-deploy`（typert-generator 要求工作区包必须
+  实际位于 `<workspace>/packages/` 下）
+- `os-deploy/tsconfig.host.json` + `tsconfig.client.json`：typert 工作区聚合配置
+- `os-deploy/packages/dsh-typert-protocol`：`@deepseek-ai/dsh-typert-protocol`
+  源码副本（自上游 deepseek-harness 下载），仅用于构建期类型分析，使
+  `@Remote` / `TypertRemoteService` 符号归属工作区包，从而生成
+  `lib/typert.host.js`（TYPERT 清单）与 `lib/typert.remote-client.js`
+- `os-deploy/vendor/`：cordis / cosmokit / @standard-schema/spec 的副本，
+  位于所有注册之外，供协议源码解析导入（模仿上游 vendor 布局）
+- 构建产物 `lib/typert.host.js` 由 DSH 的 typert-loader 经 package.json
+  的 `./typert` 导出加载，`remote.osDeploy` 由此可用
 
 ## 已知限制
 
