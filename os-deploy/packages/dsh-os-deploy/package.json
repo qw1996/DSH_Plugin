@@ -76,6 +76,6 @@
     "typescript": "^5.6.0"
   },
   "scripts": {
-    "bundle": "tsdown"
+    "bundle": "tsdown && tsdown --config tsdown.client.config.ts"
   }
 }

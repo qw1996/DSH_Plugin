@@ -1,8 +1,19 @@
 // dsh-os-deploy —— Client 半：设置页「OS 部署」仪表盘
 // 通过 `ctx.remote.osDeploy` 调用 Host 的 @Remote 方法。
+//
+// 第三方包的 Remote 贡献不会被 dsh-api-remotes 装配（它只内联 monorepo
+// 核心包的 typert.remote-client），因此这里自行把生成的贡献挂到
+// ctx.remote.$mount —— 挂载后 cordis 的 traceable 代理会按
+// reflect.props['remote.osDeploy'] 解析 ctx.remote.osDeploy。
+// 注意：inject 不能再声明 'remote.osDeploy'（本插件自己提供它，否则
+// 永远 pending）；只声明 'remote'，在 apply 中先挂载再使用。
 import * as React from 'react'
+// 自引用导入构建产物 ./lib/typert.remote-client.js（host 构建先生成，
+// client 构建将其连同 zod 一起内联进浏览器 bundle——与 dsh-api-remotes
+// 内联核心包贡献的方式一致）。
+import { TYPERT_REMOTE } from '@qinwei/dsh-os-deploy/remote'
 
-export const inject = ['slots', 'remote', 'remote.osDeploy']
+export const inject = ['slots', 'remote']
 
 const CSS = `
 .osd-wrap{display:flex;flex-direction:column;gap:14px;padding:4px 2px}
@@ -43,7 +54,10 @@ const CSS = `
 .osd-device-selected{border-color:rgba(59,130,246,.6);background:rgba(59,130,246,.08)}
 `
 
-export function apply(ctx: any) {
+export async function apply(ctx: any) {
+  // 先挂载本包的 Remote 贡献（提供 remote.osDeploy 命名空间），再注册 UI。
+  await ctx.remote.$mount(TYPERT_REMOTE)
+
   ctx.effect(() => {
     const style = document.createElement('style')
     style.textContent = CSS
