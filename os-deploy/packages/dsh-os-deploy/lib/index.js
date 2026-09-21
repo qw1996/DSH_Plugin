@@ -1,4 +1,4 @@
-import { d as DEFAULT_TLS_CERT, f as DEFAULT_TLS_KEY, i as extractIso, n as DeployRunner, r as RedfishClient, t as DeployHttpServer, u as getRouteIp } from "./engine-CHG7cvxQ.js";
+import { d as DEFAULT_TLS_CERT, f as DEFAULT_TLS_KEY, i as extractIso, n as DeployRunner, r as RedfishClient, t as DeployHttpServer, u as getRouteIp } from "./engine-CtE83Gg2.js";
 import { Service } from "@deepseek-ai/cordis";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import * as fs from "fs";
@@ -445,6 +445,13 @@ let OsDeployService = (() => {
 				};
 				this.httpServer = new DeployHttpServer(HTTP_PORT, HTTPS_PORT);
 				this.httpServer.onReport((query, ip) => this.handleReport(query, ip));
+				this.httpServer.onIsoAccess(({ count, method, status, ip }) => {
+					console.log(`[osdeploy] virtual CD fetch #${count}: ${method} ${status} from ${ip}`);
+					for (const [, task] of this.tasks) if (task.status === "running" && ip === task.device.bmcHost) {
+						this.addLog(task, "info", `虚拟光驱被 BMC 拉取 (req #${count}: ${method} ${status})`);
+						break;
+					}
+				});
 				const isoDir = path.join(this.root || os.tmpdir(), "os-deploy-iso");
 				fs.mkdirSync(isoDir, { recursive: true });
 				this.httpServer.setRoot("/iso", isoDir);
@@ -934,7 +941,7 @@ let OsDeployService = (() => {
 			};
 			const runner = new DeployRunner(spec, serverIp, HTTP_PORT, (stage, progress, log) => {
 				task.stage = stage;
-				task.progress = progress;
+				if (progress >= 0) task.progress = progress;
 				if (log) this.addLog(task, "info", log);
 			});
 			this.runners.set(task.id, runner);
@@ -955,9 +962,15 @@ let OsDeployService = (() => {
 		handleReport(query, ip) {
 			const stage = query.get("stage") || "";
 			const data = query.get("d") || "";
-			console.log(`[osdeploy] report from ${ip}: stage=${stage} d=${data.slice(0, 100)}`);
-			for (const [, task] of this.tasks) if (task.status === "running" && task.device.osIp === ip) {
-				this.addLog(task, "info", `[installer] ${stage}: ${data}`);
+			const taskTag = query.get("task") || "";
+			console.log(`[osdeploy] report from ${ip}: stage=${stage} task=${taskTag} d=${data.slice(0, 100)}`);
+			for (const [, task] of this.tasks) {
+				if (task.status !== "running") continue;
+				const byTag = taskTag && taskTag === task.id;
+				const byIp = !taskTag && task.device.osIp === ip;
+				if (!byTag && !byIp) continue;
+				if (byTag) this.runners.get(task.id)?.markReport(stage);
+				this.addLog(task, "info", `[installer] ${stage}: ${data}${byTag ? "" : "（未带任务标识）"}`);
 				const stageProgress = {
 					"pre-start": 30,
 					"cmdline": 32,

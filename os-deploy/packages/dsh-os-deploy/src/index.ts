@@ -110,6 +110,16 @@ export default class OsDeployService extends TypertRemoteService {
       if (this.serverRunning) return { ok: true, status: await this.serviceStatus() }
       this.httpServer = new DeployHttpServer(HTTP_PORT, HTTPS_PORT)
       this.httpServer.onReport((query, ip) => this.handleReport(query, ip))
+      // BMC 拉取虚拟光驱镜像的节流日志（引导是否真的发生的关键观测）
+      this.httpServer.onIsoAccess(({ count, method, status, ip }) => {
+        console.log(`[osdeploy] virtual CD fetch #${count}: ${method} ${status} from ${ip}`)
+        for (const [, task] of this.tasks) {
+          if (task.status === 'running' && ip === task.device.bmcHost) {
+            this.addLog(task, 'info', `虚拟光驱被 BMC 拉取 (req #${count}: ${method} ${status})`)
+            break
+          }
+        }
+      })
       // 虚拟光驱镜像目录（HTTPS /iso 根）与 TLS 证书
       const isoDir = path.join(this.root || os.tmpdir(), 'os-deploy-iso')
       fs.mkdirSync(isoDir, { recursive: true })
@@ -554,7 +564,7 @@ export default class OsDeployService extends TypertRemoteService {
 
     const runner = new DeployRunner(spec, serverIp, HTTP_PORT, (stage, progress, log) => {
       task.stage = stage
-      task.progress = progress
+      if (progress >= 0) task.progress = progress
       if (log) this.addLog(task, 'info', log)
     })
     this.runners.set(task.id, runner)
@@ -579,24 +589,30 @@ export default class OsDeployService extends TypertRemoteService {
   private handleReport(query: URLSearchParams, ip: string) {
     const stage = query.get('stage') || ''
     const data = query.get('d') || ''
-    console.log(`[osdeploy] report from ${ip}: stage=${stage} d=${data.slice(0, 100)}`)
+    const taskTag = query.get('task') || ''
+    console.log(`[osdeploy] report from ${ip}: stage=${stage} task=${taskTag} d=${data.slice(0, 100)}`)
 
-    // Find running task for this IP
+    // 匹配任务：优先按 task 标识（安装器回报 URL 带 task=<id>，旧系统开机
+    // 自报携带的是上一个任务的 id，不会误匹配），回退到 IP 匹配
     for (const [, task] of this.tasks) {
-      if (task.status === 'running' && task.device.osIp === ip) {
-        this.addLog(task, 'info', `[installer] ${stage}: ${data}`)
-        // Update progress based on stage
-        const stageProgress: Record<string, number> = {
-          'pre-start': 30, 'cmdline': 32, 'disks': 34, 'disk-resolved': 36,
-          'pre-done': 38, 'include-uploaded': 40, 'post-install': 85, 'firstboot': 95,
-        }
-        if (stage in stageProgress) {
-          task.progress = stageProgress[stage]
-          task.stage = stage
-        }
-        this.save()
-        break
+      if (task.status !== 'running') continue
+      const byTag = taskTag && taskTag === task.id
+      const byIp = !taskTag && task.device.osIp === ip
+      if (!byTag && !byIp) continue
+      // 带 task 标识的回报 = 本次安装的实锤证据（供 runner 成功判定）
+      if (byTag) this.runners.get(task.id)?.markReport(stage)
+      this.addLog(task, 'info', `[installer] ${stage}: ${data}${byTag ? '' : '（未带任务标识）'}`)
+      // Update progress based on stage
+      const stageProgress: Record<string, number> = {
+        'pre-start': 30, 'cmdline': 32, 'disks': 34, 'disk-resolved': 36,
+        'pre-done': 38, 'include-uploaded': 40, 'post-install': 85, 'firstboot': 95,
       }
+      if (stage in stageProgress) {
+        task.progress = stageProgress[stage]
+        task.stage = stage
+      }
+      this.save()
+      break
     }
   }
 

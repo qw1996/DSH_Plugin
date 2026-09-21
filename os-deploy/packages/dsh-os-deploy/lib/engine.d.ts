@@ -139,9 +139,19 @@ declare function genKickstart(spec: DeploySpec, serverIp: string, httpPort: numb
 declare function genPreseed(spec: DeploySpec, serverIp: string, httpPort: number): string;
 /**
  * 固化进迷你 ISO（efiboot.img 内 /EFI/BOOT/GRUB.CFG + ISO9660 /EFI/BOOT/grub.cfg）
- * 的引导配置。stage2='cd'：anaconda 从光盘加载（完整模式，引导期无需网络）。
+ * 的引导配置。两种模式（原 osdeploy 工具实证）：
+ *  - full：inst.stage2=hd:LABEL=<label>（stage2 install.img 在光盘上，
+ *    ISO ~800-980MB；openEuler 验证可行）
+ *  - slim：inst.stage2=http://<ip>:<port>/repo/<distroId>/（stage2 走 HTTP 仓库，
+ *    ISO 仅 ~70MB；麒麟实证可行——大 ISO 的虚拟光驱引导链路撑不住）。
+ *    slim 需要 dracut 期网络：ifname= 把业务网卡 MAC 绑定自定义名
+ *    （绕开 openEuler 系 dracut 055 的 enx<MAC> off-by-one 缺陷），ip= 静态配置。
  */
-declare function genVmediaGrubCfg(spec: DeploySpec, isoLabel: string): string;
+declare function genVmediaGrubCfg(spec: DeploySpec, isoLabel: string, opts?: {
+  slim?: boolean;
+  serverIp?: string;
+  httpPort?: number;
+}): string;
 /** Debian HTTP 引导 grub.cfg：kernel/initrd 由 grub 自身网络栈经 HTTP 拉取。 */
 declare function genDebianHttpGrubCfg(spec: DeploySpec, serverIp: string, httpPort: number): string;
 declare class DeployHttpServer {
@@ -151,6 +161,8 @@ declare class DeployHttpServer {
   private tlsPort;
   private roots;
   private reportHandler;
+  private isoAccessHandler;
+  private isoFetchCount;
   /** HTTPS 443 是否成功监听（iBMC 虚拟光驱要求 https:// 镜像 URL） */
   httpsUp: boolean;
   httpsError: string;
@@ -158,6 +170,13 @@ declare class DeployHttpServer {
   setRoot(prefix: string, dir: string): void;
   removeRoot(prefix: string): void;
   onReport(handler: (query: URLSearchParams, ip: string) => void): void;
+  /** /iso/* 拉取回调（BMC 拉取虚拟光驱镜像的节流日志：第 1 次及每 50 次一条） */
+  onIsoAccess(handler: (info: {
+    count: number;
+    method: string;
+    status: number;
+    ip: string;
+  }) => void): void;
   start(tls?: {
     cert: string;
     key: string;
@@ -176,8 +195,16 @@ declare class DeployRunner {
   private httpPort;
   private progress;
   private cancelled;
+  /** 本任务收到的安装器回报阶段（成功判定的证据；见 markReport） */
+  private stages;
   constructor(spec: DeploySpec, serverIp: string, httpPort: number, progress: ProgressCallback);
   cancel(): void;
+  /**
+   * 安装器回报入口（由 service 的 /report 处理器调用）。
+   * 回报 URL 携带 task=<id>，因此旧系统开机自报（带上一个任务的 id）
+   * 不会计入本任务——这是"安装是否真的发生"的判据。
+   */
+  markReport(stage: string): void;
   run(): Promise<{
     ok: boolean;
     error?: string;

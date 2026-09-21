@@ -830,7 +830,7 @@ ${packages}
 %pre --interpreter=/usr/bin/bash
 exec >/tmp/osdeploy-pre.log 2>&1
 set -x
-__R() { curl -s -m 8 -G --data-urlencode "m=deploy" --data-urlencode "stage=$1" --data-urlencode "d=$2" "http://${serverIp}:${httpPort}/report" >/dev/null 2>&1 || true; }
+__R() { curl -s -m 8 -G --data-urlencode "m=deploy" --data-urlencode "task=${spec.taskId}" --data-urlencode "stage=$1" --data-urlencode "d=$2" "http://${serverIp}:${httpPort}/report" >/dev/null 2>&1 || true; }
 __R pre-start
 TARGET_SN="${spec.diskSn}"
 TARGET=""
@@ -859,7 +859,7 @@ __R pre-done "$TARGET"
 %end
 
 %post --nochroot --interpreter=/usr/bin/bash
-curl -s -m 8 "http://${serverIp}:${httpPort}/report?m=deploy&stage=post-install" >/dev/null 2>&1 || true
+curl -s -m 8 "http://${serverIp}:${httpPort}/report?m=deploy&task=${spec.taskId}&stage=post-install" >/dev/null 2>&1 || true
 cp /tmp/osdeploy-pre.log /mnt/sysimage/root/osdeploy-pre.log 2>/dev/null || true
 %end
 
@@ -872,7 +872,7 @@ After=network-online.target
 Wants=network-online.target
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/curl -s -m 10 "http://${serverIp}:${httpPort}/report?m=deploy&stage=firstboot"
+ExecStart=/usr/bin/curl -s -m 10 "http://${serverIp}:${httpPort}/report?m=deploy&task=${spec.taskId}&stage=firstboot"
 [Install]
 WantedBy=multi-user.target
 EOFSVC
@@ -939,32 +939,39 @@ d-i preseed/early_command string \\
 
 d-i preseed/late_command string \\
   in-target sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config ; \\
-  in-target curl -s -m 10 "${base}/../report?m=deploy&stage=post-install" || true
+  in-target curl -s -m 10 "${base}/../report?m=deploy&task=${spec.taskId}&stage=post-install" || true
 `;
 }
 /**
 * 固化进迷你 ISO（efiboot.img 内 /EFI/BOOT/GRUB.CFG + ISO9660 /EFI/BOOT/grub.cfg）
-* 的引导配置。stage2='cd'：anaconda 从光盘加载（完整模式，引导期无需网络）。
+* 的引导配置。两种模式（原 osdeploy 工具实证）：
+*  - full：inst.stage2=hd:LABEL=<label>（stage2 install.img 在光盘上，
+*    ISO ~800-980MB；openEuler 验证可行）
+*  - slim：inst.stage2=http://<ip>:<port>/repo/<distroId>/（stage2 走 HTTP 仓库，
+*    ISO 仅 ~70MB；麒麟实证可行——大 ISO 的虚拟光驱引导链路撑不住）。
+*    slim 需要 dracut 期网络：ifname= 把业务网卡 MAC 绑定自定义名
+*    （绕开 openEuler 系 dracut 055 的 enx<MAC> off-by-one 缺陷），ip= 静态配置。
 */
-function genVmediaGrubCfg(spec, isoLabel) {
-	const kargs = [
-		`inst.stage2=hd:LABEL=${isoLabel}`,
-		`inst.ks=hd:LABEL=${isoLabel}:/ks.cfg`,
-		`ro`,
-		`inst.geoloc=0`,
-		`inst.cmdline`,
-		`console=tty0 console=ttyS0,115200n8`,
-		`smmu.bypassdev=0x1000:0x17`,
-		`smmu.bypassdev=0x1000:0x15`,
-		`video=efifb:off`,
-		`fpi_to_tail=off`
-	].join(" ");
-	return `# osdeploy generated (virtual media) grub.cfg for ${spec.hostname || spec.osIp}
+function genVmediaGrubCfg(spec, isoLabel, opts) {
+	const slim = !!opts?.slim;
+	const kargs = [];
+	if (slim) {
+		const serverIp = opts?.serverIp || "";
+		const httpPort = opts?.httpPort || 8080;
+		kargs.push(`inst.stage2=http://${serverIp}:${httpPort}/repo/${spec.distroId}/`);
+		const mac = String(spec.nicMac || "").toLowerCase();
+		const mask = prefixToMask(spec.osPrefixLen);
+		if (mac) kargs.push(`ifname=netboot0:${mac}`);
+		kargs.push(`ip=${spec.osIp}::${spec.osGateway}:${mask}:${spec.hostname || "osdeploy"}:netboot0:none`);
+		kargs.push(`nameserver=${(spec.osDns || ["114.114.114.114"])[0]}`);
+	} else kargs.push(`inst.stage2=hd:LABEL=${isoLabel}`);
+	kargs.push(`inst.ks=hd:LABEL=${isoLabel}:/ks.cfg`, `ro`, `inst.geoloc=0`, `inst.cmdline`, `console=tty0 console=ttyS0,115200n8`, `smmu.bypassdev=0x1000:0x17`, `smmu.bypassdev=0x1000:0x15`, `video=efifb:off`, `fpi_to_tail=off`);
+	return `# osdeploy generated (virtual media${slim ? ", slim" : ""}) grub.cfg for ${spec.hostname || spec.osIp}
 set default=0
 set timeout=3
 menuentry 'osdeploy ${spec.distroId} (${spec.hostname || spec.osIp})' --class gnu-linux {
   search --no-floppy --set=root -l '${isoLabel}'
-  linux /images/pxeboot/vmlinuz ${kargs}
+  linux /images/pxeboot/vmlinuz ${kargs.join(" ")}
   initrd /images/pxeboot/initrd.img
 }
 `;
@@ -1032,6 +1039,8 @@ var DeployHttpServer = class {
 	tlsPort;
 	roots = /* @__PURE__ */ new Map();
 	reportHandler = null;
+	isoAccessHandler = null;
+	isoFetchCount = 0;
 	/** HTTPS 443 是否成功监听（iBMC 虚拟光驱要求 https:// 镜像 URL） */
 	httpsUp = false;
 	httpsError = "";
@@ -1047,6 +1056,10 @@ var DeployHttpServer = class {
 	}
 	onReport(handler) {
 		this.reportHandler = handler;
+	}
+	/** /iso/* 拉取回调（BMC 拉取虚拟光驱镜像的节流日志：第 1 次及每 50 次一条） */
+	onIsoAccess(handler) {
+		this.isoAccessHandler = handler;
 	}
 	start(tls) {
 		return new Promise((resolve, reject) => {
@@ -1148,6 +1161,17 @@ var DeployHttpServer = class {
 				"Accept-Ranges": "bytes",
 				...code === 206 ? { "Content-Range": `bytes ${start}-${end}/${total}` } : {}
 			});
+			if (prefix === "/iso" && this.isoAccessHandler) {
+				this.isoFetchCount++;
+				if (this.isoFetchCount === 1 || this.isoFetchCount % 50 === 0) try {
+					this.isoAccessHandler({
+						count: this.isoFetchCount,
+						method: req.method || "",
+						status: code,
+						ip
+					});
+				} catch {}
+			}
 			if (req.method === "HEAD") {
 				res.end();
 				return;
@@ -1195,6 +1219,8 @@ var DeployRunner = class {
 	httpPort;
 	progress;
 	cancelled = false;
+	/** 本任务收到的安装器回报阶段（成功判定的证据；见 markReport） */
+	stages = /* @__PURE__ */ new Set();
 	constructor(spec, serverIp, httpPort, progress) {
 		this.spec = spec;
 		this.serverIp = serverIp;
@@ -1205,6 +1231,17 @@ var DeployRunner = class {
 	cancel() {
 		this.cancelled = true;
 	}
+	/**
+	* 安装器回报入口（由 service 的 /report 处理器调用）。
+	* 回报 URL 携带 task=<id>，因此旧系统开机自报（带上一个任务的 id）
+	* 不会计入本任务——这是"安装是否真的发生"的判据。
+	*/
+	markReport(stage) {
+		if (!this.stages.has(stage)) {
+			this.stages.add(stage);
+			this.progress("installing", -1, `[installer] ${stage}`);
+		}
+	}
 	async run() {
 		try {
 			this.progress("preflight", 2, "Probing BMC...");
@@ -1214,18 +1251,24 @@ var DeployRunner = class {
 				ok: false,
 				error: "cancelled"
 			};
-			this.progress("building", 8, "Building per-machine mini boot ISO...");
+			const slim = this.spec.vendor === "kylin";
+			this.progress("building", 8, `Building per-machine mini boot ISO [${slim ? "slim" : "full"}]...`);
 			const isoLabel = ("OSDEPLOY_" + this.spec.taskId).toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 32);
 			const isoOut = path.join(this.spec.isoOutDir, `${this.spec.taskId}.iso`);
 			const ks = genKickstart(this.spec, this.serverIp, this.httpPort);
-			const grub = genVmediaGrubCfg(this.spec, isoLabel);
+			const grub = genVmediaGrubCfg(this.spec, isoLabel, {
+				slim,
+				serverIp: this.serverIp,
+				httpPort: this.httpPort
+			});
 			const binfo = await buildMiniIso({
 				repoDir: this.spec.repoDir,
 				label: isoLabel,
 				ks,
 				grubCfg: grub,
 				grubCfgPath: "/EFI/BOOT/GRUB.CFG",
-				out: isoOut
+				out: isoOut,
+				slim
 			});
 			const isoMB = Math.round(binfo.size / 1048576);
 			this.progress("building", 11, `Mini boot ISO ready: ${isoOut} (${isoMB}MB, boot image ${(binfo.bootImageSize / 1048576).toFixed(1)}MB)`);
@@ -1294,10 +1337,18 @@ var DeployRunner = class {
 				}
 				await sleep(3e4);
 				const elapsed = Math.floor((Date.now() - startTime) / 1e3);
+				const evidence = this.stages.has("post-install") || this.stages.has("firstboot");
 				const pct = Math.min(25 + Math.floor(elapsed / 1800 * 65), 90);
-				this.progress("installing", pct, `Waiting for OS to boot (${Math.floor(elapsed / 60)}min)...`);
+				this.progress("installing", pct, `Waiting for OS to boot (${Math.floor(elapsed / 60)}min${evidence ? ", 安装器已回报" : ""})...`);
 				if (await this.trySsh(this.spec.osIp)) {
-					this.progress("verifying", 95, "SSH is up! Verifying installation...");
+					if (!evidence) {
+						await this.rf.vmediaDisconnect().catch(() => {});
+						return {
+							ok: false,
+							error: "机器 SSH 可达，但未收到本次安装的安装器回报——很可能虚拟光驱引导失败后回落启动了旧系统（旧系统 SSH 同样可达）。请检查 BMC 远程控制台确认引导过程；若确认已实际装好（登录查看 /etc/os-release），可忽略此判定。"
+						};
+					}
+					this.progress("verifying", 95, "SSH is up + installer reports received!");
 					await this.rf.vmediaDisconnect().catch(() => {});
 					this.progress("done", 100, "Installation complete!");
 					return { ok: true };
@@ -1306,7 +1357,7 @@ var DeployRunner = class {
 			await this.rf.vmediaDisconnect().catch(() => {});
 			return {
 				ok: false,
-				error: "timeout waiting for SSH (30 min)"
+				error: `timeout waiting for SSH (30 min)；已收到的安装器回报: ${[...this.stages].join(",") || "无"}`
 			};
 		} catch (e) {
 			await this.rf.vmediaDisconnect().catch(() => {});
