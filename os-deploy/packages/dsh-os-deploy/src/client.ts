@@ -77,6 +77,14 @@ export async function apply(ctx: any) {
     try { return new Date(ts).toLocaleString() } catch (e) { return String(ts) }
   }
 
+  // dsh-api-gateway 客户端的 invoke 把每次 Remote 调用解析为 Answer 信封：
+  //   { ok: true, value: <方法返回值> } | { ok: false, error: RemoteError }
+  // 拆包后再交给 UI——内层 {ok,...} 才是各方法自己的业务语义。
+  function unwrap<T = any>(a: any): T {
+    if (a && a.ok) return a.value as T
+    throw new Error(a?.error?.message || a?.error?.code || String(a?.error ?? '调用失败'))
+  }
+
   function btn(label: string, onClick: (e?: any) => void, cls?: string, disabled?: boolean) {
     return h('button', { className: 'osd-btn' + (cls ? ' ' + cls : ''), onClick, disabled: !!disabled }, label)
   }
@@ -128,15 +136,15 @@ export async function apply(ctx: any) {
       let alive = true
       async function run() {
         try {
-          const st = await remote.serviceStatus()
+          const st = unwrap(await remote.serviceStatus())
           if (alive) setSvc(st || { running: false })
           const [img, tsk, srv] = await Promise.all([
             remote.listImages(), remote.listTasks(), remote.listServers(),
           ])
           if (alive) {
-            setImages(img.images || [])
-            setTasks(tsk.tasks || [])
-            setServers(srv.servers || [])
+            setImages(unwrap(img).images || [])
+            setTasks(unwrap(tsk).tasks || [])
+            setServers(unwrap(srv).servers || [])
             setError('')
           }
         } catch (e: any) { if (alive) setError(String(e?.message || e)) }
@@ -149,7 +157,9 @@ export async function apply(ctx: any) {
     // Load components when vendor changes
     React.useEffect(() => {
       if (!form.vendor) { setComponents([]); return }
-      remote.listComponents({ vendor: form.vendor }).then((r: any) => setComponents(r.components || [])).catch(() => setComponents([]))
+      remote.listComponents({ vendor: form.vendor })
+        .then((r: any) => setComponents(unwrap(r).components || []))
+        .catch(() => setComponents([]))
     }, [form.vendor])
 
     function setF(k: string) { return (v: string) => setForm((f: any) => ({ ...f, [k]: v })) }
@@ -157,7 +167,7 @@ export async function apply(ctx: any) {
     async function doRegisterIso() {
       setBusy(true); setMsg('')
       try {
-        const r = await remote.registerIso({ name: form.isoName || '', vendor: form.vendor, isoPath: form.isoPath })
+        const r = unwrap(await remote.registerIso({ name: form.isoName || '', vendor: form.vendor, isoPath: form.isoPath }))
         setMsg(r.ok ? '镜像注册成功' : `注册失败: ${r.error}`)
         if (r.ok) { setForm((f: any) => ({ ...f, isoPath: '', isoName: '' })) }
       } catch (e: any) { setMsg('注册失败: ' + String(e?.message || e)) }
@@ -167,21 +177,21 @@ export async function apply(ctx: any) {
     async function doExtract(imgId: string) {
       setBusy(true); setMsg('')
       try {
-        const r = await remote.extractImage({ imageId: imgId })
+        const r = unwrap(await remote.extractImage({ imageId: imgId }))
         setMsg(r.ok ? '解包完成' : `解包失败: ${r.error}`)
       } catch (e: any) { setMsg('解包失败: ' + String(e?.message || e)) }
       finally { setBusy(false) }
     }
 
     async function doDeleteImage(imgId: string) {
-      try { const r = await remote.deleteImage({ imageId: imgId }); setMsg(r.ok ? '已删除' : `删除失败: ${r.error}`) }
+      try { const r = unwrap(await remote.deleteImage({ imageId: imgId })); setMsg(r.ok ? '已删除' : `删除失败: ${r.error}`) }
       catch (e: any) { setMsg('删除失败: ' + String(e?.message || e)) }
     }
 
     async function doProbe() {
       setBusy(true); setProbeResult(null); setMsg('')
       try {
-        const r = await remote.probeDevice({ bmcHost: form.bmcHost, bmcUser: form.bmcUser, bmcPassword: form.bmcPassword })
+        const r = unwrap(await remote.probeDevice({ bmcHost: form.bmcHost, bmcUser: form.bmcUser, bmcPassword: form.bmcPassword }))
         setProbeResult(r)
         if (r.ok && r.nicMac) setForm((f: any) => ({ ...f, nicMac: r.nicMac }))
         if (r.ok && r.disks && r.disks.length === 1) setForm((f: any) => ({ ...f, diskSn: r.disks[0].serial }))
@@ -221,7 +231,7 @@ export async function apply(ctx: any) {
           })
         }
         if (devices.length === 0) { setMsg('请至少添加一个设备'); return }
-        const r = await remote.createTask({ imageId: form.imageId, devices, components: form.components })
+        const r = unwrap(await remote.createTask({ imageId: form.imageId, devices, components: form.components }))
         setMsg(r.ok ? `已创建 ${r.taskIds.length} 个安装任务` : `创建失败: ${r.error}`)
         if (r.ok) { setTab('tasks') }
       } catch (e: any) { setMsg('创建失败: ' + String(e?.message || e)) }
@@ -229,19 +239,19 @@ export async function apply(ctx: any) {
     }
 
     async function doCancelTask(id: string) {
-      try { await remote.cancelTask({ taskId: id }) } catch (e: any) { setMsg('取消失败: ' + String(e?.message || e)) }
+      try { unwrap(await remote.cancelTask({ taskId: id })) } catch (e: any) { setMsg('取消失败: ' + String(e?.message || e)) }
     }
 
     async function doDeleteTask(id: string) {
-      try { await remote.deleteTask({ taskId: id }) } catch (e: any) { setMsg('删除失败: ' + String(e?.message || e)) }
+      try { unwrap(await remote.deleteTask({ taskId: id })) } catch (e: any) { setMsg('删除失败: ' + String(e?.message || e)) }
     }
 
     // ---------- 部署服务控制 ----------
     async function doSvcStart() {
       setSvcBusy(true); setMsg('')
       try {
-        const r = await remote.serviceStart()
-        if (r.ok) { setSvc(r.status); setMsg('部署服务已启动（HTTP 软件源 + 任务队列）') }
+        const r = unwrap(await remote.serviceStart())
+        if (r.ok) { setSvc(r.status || { running: false }); setMsg('部署服务已启动（HTTP 软件源 + 任务队列）') }
         else setMsg('启动失败: ' + (r.error || '未知错误'))
       } catch (e: any) { setMsg('启动失败: ' + String(e?.message || e)) }
       finally { setSvcBusy(false) }
@@ -249,8 +259,8 @@ export async function apply(ctx: any) {
     async function doSvcStop() {
       setSvcBusy(true); setMsg('')
       try {
-        const r = await remote.serviceStop()
-        if (r.ok) { setSvc(r.status); setMsg('部署服务已停止（排队/运行中的任务将终止）') }
+        const r = unwrap(await remote.serviceStop())
+        if (r.ok) { setSvc(r.status || { running: false }); setMsg('部署服务已停止（排队/运行中的任务将终止）') }
         else setMsg('停止失败: ' + (r.error || '未知错误'))
       } catch (e: any) { setMsg('停止失败: ' + String(e?.message || e)) }
       finally { setSvcBusy(false) }
@@ -258,8 +268,8 @@ export async function apply(ctx: any) {
     async function doSvcRestart() {
       setSvcBusy(true); setMsg('')
       try {
-        const r = await remote.serviceRestart()
-        if (r.ok) { setSvc(r.status); setMsg('部署服务已重启') }
+        const r = unwrap(await remote.serviceRestart())
+        if (r.ok) { setSvc(r.status || { running: false }); setMsg('部署服务已重启') }
         else setMsg('重启失败: ' + (r.error || '未知错误'))
       } catch (e: any) { setMsg('重启失败: ' + String(e?.message || e)) }
       finally { setSvcBusy(false) }
@@ -477,8 +487,27 @@ export async function apply(ctx: any) {
     )
   }
 
+  // 错误边界：本面板任何渲染异常只降级为错误卡片，绝不白屏整个 GUI
+  // （React 无边界时异常会卸载整棵树）。
+  class Boundary extends React.Component<any, { error: any }> {
+    state = { error: null as any }
+    static getDerivedStateFromError(error: any) { return { error } }
+    render() {
+      if (this.state.error) {
+        return h('div', { className: 'osd-card' },
+          h('div', { className: 'osd-h' }, 'OS 部署面板渲染出错'),
+          h('div', { className: 'osd-pre' }, String(this.state.error?.message || this.state.error)),
+          h('div', { className: 'osd-row' },
+            h('button', { className: 'osd-btn', onClick: () => this.setState({ error: null }) }, '重试'),
+          ),
+        )
+      }
+      return this.props.children as any
+    }
+  }
+
   ctx.slots.inject('settings.section', () => ctx.slots.register(
     { name: 'settings.section', id: 'os-deploy', order: 51, label: 'OS 部署' },
-    () => h(App),
+    () => h(Boundary, null, h(App)),
   ))
 }

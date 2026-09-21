@@ -5975,6 +5975,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					return String(ts);
 				}
 			}
+			function unwrap(a) {
+				if (a && a.ok) return a.value;
+				throw new Error(a?.error?.message || a?.error?.code || String(a?.error ?? "调用失败"));
+			}
 			function btn(label, onClick, cls, disabled) {
 				return h("button", {
 					className: "osd-btn" + (cls ? " " + cls : ""),
@@ -6041,7 +6045,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					let alive = true;
 					async function run() {
 						try {
-							const st = await remote.serviceStatus();
+							const st = unwrap(await remote.serviceStatus());
 							if (alive) setSvc(st || { running: false });
 							const [img, tsk, srv] = await Promise.all([
 								remote.listImages(),
@@ -6049,9 +6053,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 								remote.listServers()
 							]);
 							if (alive) {
-								setImages(img.images || []);
-								setTasks(tsk.tasks || []);
-								setServers(srv.servers || []);
+								setImages(unwrap(img).images || []);
+								setTasks(unwrap(tsk).tasks || []);
+								setServers(unwrap(srv).servers || []);
 								setError("");
 							}
 						} catch (e) {
@@ -6070,7 +6074,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						setComponents([]);
 						return;
 					}
-					remote.listComponents({ vendor: form.vendor }).then((r) => setComponents(r.components || [])).catch(() => setComponents([]));
+					remote.listComponents({ vendor: form.vendor }).then((r) => setComponents(unwrap(r).components || [])).catch(() => setComponents([]));
 				}, [form.vendor]);
 				function setF(k) {
 					return (v) => setForm((f) => ({
@@ -6082,11 +6086,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					setBusy(true);
 					setMsg("");
 					try {
-						const r = await remote.registerIso({
+						const r = unwrap(await remote.registerIso({
 							name: form.isoName || "",
 							vendor: form.vendor,
 							isoPath: form.isoPath
-						});
+						}));
 						setMsg(r.ok ? "镜像注册成功" : `注册失败: ${r.error}`);
 						if (r.ok) setForm((f) => ({
 							...f,
@@ -6103,7 +6107,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					setBusy(true);
 					setMsg("");
 					try {
-						const r = await remote.extractImage({ imageId: imgId });
+						const r = unwrap(await remote.extractImage({ imageId: imgId }));
 						setMsg(r.ok ? "解包完成" : `解包失败: ${r.error}`);
 					} catch (e) {
 						setMsg("解包失败: " + String(e?.message || e));
@@ -6113,7 +6117,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				}
 				async function doDeleteImage(imgId) {
 					try {
-						const r = await remote.deleteImage({ imageId: imgId });
+						const r = unwrap(await remote.deleteImage({ imageId: imgId }));
 						setMsg(r.ok ? "已删除" : `删除失败: ${r.error}`);
 					} catch (e) {
 						setMsg("删除失败: " + String(e?.message || e));
@@ -6124,11 +6128,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					setProbeResult(null);
 					setMsg("");
 					try {
-						const r = await remote.probeDevice({
+						const r = unwrap(await remote.probeDevice({
 							bmcHost: form.bmcHost,
 							bmcUser: form.bmcUser,
 							bmcPassword: form.bmcPassword
-						});
+						}));
 						setProbeResult(r);
 						if (r.ok && r.nicMac) setForm((f) => ({
 							...f,
@@ -6191,11 +6195,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 							setMsg("请至少添加一个设备");
 							return;
 						}
-						const r = await remote.createTask({
+						const r = unwrap(await remote.createTask({
 							imageId: form.imageId,
 							devices,
 							components: form.components
-						});
+						}));
 						setMsg(r.ok ? `已创建 ${r.taskIds.length} 个安装任务` : `创建失败: ${r.error}`);
 						if (r.ok) setTab("tasks");
 					} catch (e) {
@@ -6206,14 +6210,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				}
 				async function doCancelTask(id) {
 					try {
-						await remote.cancelTask({ taskId: id });
+						unwrap(await remote.cancelTask({ taskId: id }));
 					} catch (e) {
 						setMsg("取消失败: " + String(e?.message || e));
 					}
 				}
 				async function doDeleteTask(id) {
 					try {
-						await remote.deleteTask({ taskId: id });
+						unwrap(await remote.deleteTask({ taskId: id }));
 					} catch (e) {
 						setMsg("删除失败: " + String(e?.message || e));
 					}
@@ -6222,9 +6226,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					setSvcBusy(true);
 					setMsg("");
 					try {
-						const r = await remote.serviceStart();
+						const r = unwrap(await remote.serviceStart());
 						if (r.ok) {
-							setSvc(r.status);
+							setSvc(r.status || { running: false });
 							setMsg("部署服务已启动（HTTP 软件源 + 任务队列）");
 						} else setMsg("启动失败: " + (r.error || "未知错误"));
 					} catch (e) {
@@ -6237,9 +6241,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					setSvcBusy(true);
 					setMsg("");
 					try {
-						const r = await remote.serviceStop();
+						const r = unwrap(await remote.serviceStop());
 						if (r.ok) {
-							setSvc(r.status);
+							setSvc(r.status || { running: false });
 							setMsg("部署服务已停止（排队/运行中的任务将终止）");
 						} else setMsg("停止失败: " + (r.error || "未知错误"));
 					} catch (e) {
@@ -6252,9 +6256,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					setSvcBusy(true);
 					setMsg("");
 					try {
-						const r = await remote.serviceRestart();
+						const r = unwrap(await remote.serviceRestart());
 						if (r.ok) {
-							setSvc(r.status);
+							setSvc(r.status || { running: false });
 							setMsg("部署服务已重启");
 						} else setMsg("重启失败: " + (r.error || "未知错误"));
 					} catch (e) {
@@ -6359,12 +6363,25 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					style: { color: "#f5c542" }
 				}, "需先启动部署服务"), busy && h("span", { className: "osd-meta" }, "处理中..."))));
 			}
+			class Boundary extends react.Component {
+				state = { error: null };
+				static getDerivedStateFromError(error) {
+					return { error };
+				}
+				render() {
+					if (this.state.error) return h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "OS 部署面板渲染出错"), h("div", { className: "osd-pre" }, String(this.state.error?.message || this.state.error)), h("div", { className: "osd-row" }, h("button", {
+						className: "osd-btn",
+						onClick: () => this.setState({ error: null })
+					}, "重试")));
+					return this.props.children;
+				}
+			}
 			ctx.slots.inject("settings.section", () => ctx.slots.register({
 				name: "settings.section",
 				id: "os-deploy",
 				order: 51,
 				label: "OS 部署"
-			}, () => h(App)));
+			}, () => h(Boundary, null, h(App))));
 		}
 		//#endregion
 		exports.apply = apply;
