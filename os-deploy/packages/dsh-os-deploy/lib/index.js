@@ -1,4 +1,4 @@
-import { a as ensureDebianRepoAssets, c as genKickstart, f as getRouteIp, i as SyslogCollector, l as genPreseed, m as DEFAULT_TLS_KEY, n as DeployRunner, o as extractIso, p as DEFAULT_TLS_CERT, r as RedfishClient, s as genDebianHttpGrubCfg, t as DeployHttpServer } from "./engine-DIfaKY7O.js";
+import { a as ensureDebianRepoAssets, c as genKickstart, f as getRouteIp, i as SyslogCollector, l as genPreseed, m as DEFAULT_TLS_KEY, n as DeployRunner, o as extractIso, p as DEFAULT_TLS_CERT, r as RedfishClient, s as genDebianHttpGrubCfg, t as DeployHttpServer } from "./engine-BPg6KujV.js";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import * as fs from "fs";
 import * as path from "path";
@@ -45,7 +45,13 @@ var __esDecorate = function(ctor, descriptorIn, decorators, contextIn, initializ
 	if (target) Object.defineProperty(target, contextIn.name, descriptor);
 	done = true;
 };
-const HTTP_PORT = 8080;
+/**
+* 仓库 / preseed / report 的 HTTP 端口。用 80（d-i 的 choose-mirror 没有
+* mirror/http/port 模板——hostname 只接受纯主机名，端口只能靠默认 80；
+* 原工具即用 80 成功安装 Debian。本机防火墙关闭、80 空闲、已能绑 443，
+* 故绑 80 无碍。）
+*/
+const HTTP_PORT = 80;
 /** 虚拟光驱 HTTPS 端口（iBMC 要求 https:// 镜像 URL；443 免端口后缀） */
 const HTTPS_PORT = 443;
 /** 安装器 syslog 接收端口（rd.syslog/inst.remotelog 推送） */

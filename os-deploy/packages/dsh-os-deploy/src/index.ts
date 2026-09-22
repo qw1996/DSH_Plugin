@@ -33,7 +33,13 @@ import { DEFAULT_TLS_CERT, DEFAULT_TLS_KEY } from './certs'
 
 type Json = any
 
-const HTTP_PORT = 8080
+/**
+ * 仓库 / preseed / report 的 HTTP 端口。用 80（d-i 的 choose-mirror 没有
+ * mirror/http/port 模板——hostname 只接受纯主机名，端口只能靠默认 80；
+ * 原工具即用 80 成功安装 Debian。本机防火墙关闭、80 空闲、已能绑 443，
+ * 故绑 80 无碍。）
+ */
+const HTTP_PORT = 80
 /** 虚拟光驱 HTTPS 端口（iBMC 要求 https:// 镜像 URL；443 免端口后缀） */
 const HTTPS_PORT = 443
 /** 安装器 syslog 接收端口（rd.syslog/inst.remotelog 推送） */

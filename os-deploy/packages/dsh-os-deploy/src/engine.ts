@@ -383,7 +383,7 @@ d-i netcfg/get_nameservers string ${dns}
 d-i netcfg/get_hostname string ${spec.hostname}
 d-i netcfg/get_domain string local
 d-i mirror/country string manual
-d-i mirror/http/hostname string ${serverIp}:${httpPort}
+d-i mirror/http/hostname string ${serverIp}
 d-i mirror/http/directory string /repo/${spec.distroId}
 d-i mirror/http/proxy string
 d-i apt-setup/services-select multiselect none
@@ -442,7 +442,7 @@ export function genVmediaGrubCfg(spec: DeploySpec, isoLabel: string, opts: {
 }): string {
   const slim = !!opts?.slim
   const serverIp = opts.serverIp
-  const httpPort = opts?.httpPort || 8080
+  const httpPort = opts?.httpPort || 80
   const kargs: string[] = []
   if (slim) {
     kargs.push(`inst.stage2=http://${serverIp}:${httpPort}/repo/${spec.distroId}/`)
