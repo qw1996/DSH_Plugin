@@ -428,7 +428,18 @@ export default class OsDeployService extends TypertRemoteService {
     const idx = this.images.findIndex(i => i.id === req.imageId)
     if (idx < 0) return { ok: false, error: 'image not found' }
     const img = this.images[idx]
+    const running = Array.from(this.tasks.values()).some(t => t.status === 'running' && t.imageId === img.id)
+    if (running) return { ok: false, error: '该镜像有正在运行的安装任务，请先等任务结束' }
     if (this.httpServer) this.httpServer.removeRoot(`/repo/${img.distroId}`)
+    // 同步删除解包目录（可能高达数十 GB——原版只摘除 HTTP 根、目录残留）
+    if (img.extractedDir && fs.existsSync(img.extractedDir)) {
+      try {
+        fs.rmSync(img.extractedDir, { recursive: true, force: true })
+        console.log(`[osdeploy] removed extracted repo: ${img.extractedDir}`)
+      } catch (e: any) {
+        console.error(`[osdeploy] failed to remove extracted repo: ${e?.message || e}`)
+      }
+    }
     this.images.splice(idx, 1)
     this.save()
     return { ok: true }
@@ -677,6 +688,15 @@ export default class OsDeployService extends TypertRemoteService {
       this.addLog(task, 'error', `Deployment failed: ${task.error}`)
     }
     task.finishedAt = Date.now()
+    // 任务结束即清理本任务的迷你启动 ISO（可随时按 taskId 确定性重建，
+    // 留存只会积累 GB 级垃圾）
+    const taskIso = path.join(spec.isoOutDir, `${task.id}.iso`)
+    try {
+      if (fs.existsSync(taskIso)) {
+        fs.rmSync(taskIso, { force: true })
+        console.log(`[osdeploy] cleaned mini-ISO: ${taskIso}`)
+      }
+    } catch { /* 清理失败不影响任务结果 */ }
     this.save()
   }
 

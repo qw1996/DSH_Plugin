@@ -793,7 +793,20 @@ let OsDeployService = (() => {
 				error: "image not found"
 			};
 			const img = this.images[idx];
+			if (Array.from(this.tasks.values()).some((t) => t.status === "running" && t.imageId === img.id)) return {
+				ok: false,
+				error: "该镜像有正在运行的安装任务，请先等任务结束"
+			};
 			if (this.httpServer) this.httpServer.removeRoot(`/repo/${img.distroId}`);
+			if (img.extractedDir && fs.existsSync(img.extractedDir)) try {
+				fs.rmSync(img.extractedDir, {
+					recursive: true,
+					force: true
+				});
+				console.log(`[osdeploy] removed extracted repo: ${img.extractedDir}`);
+			} catch (e) {
+				console.error(`[osdeploy] failed to remove extracted repo: ${e?.message || e}`);
+			}
 			this.images.splice(idx, 1);
 			this.save();
 			return { ok: true };
@@ -1041,6 +1054,13 @@ let OsDeployService = (() => {
 				this.addLog(task, "error", `Deployment failed: ${task.error}`);
 			}
 			task.finishedAt = Date.now();
+			const taskIso = path.join(spec.isoOutDir, `${task.id}.iso`);
+			try {
+				if (fs.existsSync(taskIso)) {
+					fs.rmSync(taskIso, { force: true });
+					console.log(`[osdeploy] cleaned mini-ISO: ${taskIso}`);
+				}
+			} catch {}
 			this.save();
 		}
 		handleReport(query, ip) {
