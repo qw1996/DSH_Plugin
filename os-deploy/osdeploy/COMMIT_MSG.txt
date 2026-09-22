@@ -1,13 +1,5 @@
-fix(debian): link_wait_timeout 15→60（hinic 链路建链慢/偶发失败）
+fix: hostname 兜底——表单留空时默认 debian-<IP末段>
 
-诊断 task_e0325ae04686：netboot kernel/initrd 由 grub 拉取成功（11:24），但 d-i
-之后既没拉 /ks preseed、也没 early-apt-config，卡在 netcfg 阶段（early_command
-之前）——和之前任务（卡在 early_command 之后）是不同卡点，共同根因是网络/NIC。
-
-核验 netboot initrd（67MB cpio 3190 项）：hinic.ko.xz 在
-drivers/net/ethernet/huawei/hinic/——非缺驱动。Hi1822 在 d-i netcfg 重初始化时
-link 偶发起不来（前几次到 early_command、这次卡 netcfg）。
-
-- netcfg/link_wait_timeout 15→60：给 hinic 更多建链时间，降低偶发失败概率
-- 保留 syslog 心跳：若 early_command 能到，syslog 会暴露 early_command 之后
-  choose-mirror 阶段的卡因（之前一直没看到的那段）
+task_62b15103a688 的 grub.cfg 出现 netcfg/get_hostname=（空），因任务创建时
+表单没填 hostname。空 hostname 会让 d-i netcfg 弹 "Hostname" 对话框、auto
+模式卡住。createTask 里兜底：device.hostname 为空则用 debian-<osIp末段>。

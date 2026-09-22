@@ -1083,10 +1083,14 @@ let OsDeployService = (() => {
 				const taskIds = [];
 				for (const device of req.devices) {
 					const id = "task_" + crypto.randomBytes(6).toString("hex");
+					const dev = {
+						...device,
+						hostname: device.hostname || "debian-" + (device.osIp || "").split(".").pop()
+					};
 					const task = {
 						id,
 						imageId: req.imageId,
-						device,
+						device: dev,
 						components: req.components || ["core"],
 						status: "queued",
 						createdAt: Date.now(),

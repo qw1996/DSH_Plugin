@@ -672,8 +672,14 @@ export default class OsDeployService extends TypertRemoteService {
       const taskIds: string[] = []
       for (const device of req.devices) {
         const id = 'task_' + crypto.randomBytes(6).toString('hex')
+        // hostname 兜底：表单留空则用 debian-<IP末段>，避免 netcfg/get_hostname=
+        // 为空导致 d-i netcfg 弹 "Hostname" 对话框（auto 模式会卡住）
+        const dev = {
+          ...device,
+          hostname: device.hostname || ('debian-' + (device.osIp || '').split('.').pop()),
+        }
         const task: DeployTask = {
-          id, imageId: req.imageId, device, components: req.components || ['core'],
+          id, imageId: req.imageId, device: dev, components: req.components || ['core'],
           status: 'queued', createdAt: Date.now(),
           startedAt: null, finishedAt: null, progress: 0,
           stage: 'queued', logs: [], error: null,
