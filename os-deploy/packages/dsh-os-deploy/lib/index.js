@@ -1,4 +1,4 @@
-import { d as DEFAULT_TLS_CERT, f as DEFAULT_TLS_KEY, i as extractIso, n as DeployRunner, r as RedfishClient, t as DeployHttpServer, u as getRouteIp } from "./engine-7G4X3pNO.js";
+import { a as extractIso, d as getRouteIp, f as DEFAULT_TLS_CERT, i as SyslogCollector, n as DeployRunner, p as DEFAULT_TLS_KEY, r as RedfishClient, t as DeployHttpServer } from "./engine-fhVBmOiQ.js";
 import { Service } from "@deepseek-ai/cordis";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import * as fs from "fs";
@@ -49,6 +49,8 @@ var __esDecorate = function(ctor, descriptorIn, decorators, contextIn, initializ
 const HTTP_PORT = 8080;
 /** 虚拟光驱 HTTPS 端口（iBMC 要求 https:// 镜像 URL；443 免端口后缀） */
 const HTTPS_PORT = 443;
+/** 安装器 syslog 接收端口（rd.syslog/inst.remotelog 推送） */
+const SYSLOG_PORT = 514;
 const COMPONENTS = {
 	openEuler: [
 		{
@@ -410,6 +412,16 @@ let OsDeployService = (() => {
 		serverStartedAt = null;
 		httpServer = null;
 		runners = /* @__PURE__ */ new Map();
+		/** 安装器 syslog 收集（rd.syslog/inst.remotelog → 实时安装日志） */
+		syslog = null;
+		/** BMC 拉盘请求计数（节流日志用） */
+		isoFetchCount = 0;
+		/** 每任务已装 RPM 计数（逐包日志 + 进度映射） */
+		rpmCounts = /* @__PURE__ */ new Map();
+		/** 每任务已记录过的仓库元数据/install.img（去重） */
+		repoSeen = /* @__PURE__ */ new Map();
+		/** syslog 入任务日志的节流时间戳 */
+		lastSyslogAt = 0;
 		root = null;
 		dataFile = null;
 		queueRunning = false;
@@ -421,6 +433,7 @@ let OsDeployService = (() => {
 			this.load();
 			ctx.on("dispose", () => {
 				if (this.httpServer) this.httpServer.stop();
+				if (this.syslog) this.syslog.stop();
 				for (const [, r] of this.runners) r.cancel();
 			});
 		}
@@ -445,18 +458,22 @@ let OsDeployService = (() => {
 				};
 				this.httpServer = new DeployHttpServer(HTTP_PORT, HTTPS_PORT);
 				this.httpServer.onReport((query, ip) => this.handleReport(query, ip));
-				this.httpServer.onIsoAccess(({ count, method, status, ip }) => {
-					console.log(`[osdeploy] virtual CD fetch #${count}: ${method} ${status} from ${ip}`);
-					for (const [, task] of this.tasks) if (task.status === "running" && ip === task.device.bmcHost) {
-						this.addLog(task, "info", `虚拟光驱被 BMC 拉取 (req #${count}: ${method} ${status})`);
-						break;
-					}
-				});
+				this.isoFetchCount = 0;
+				this.httpServer.onAccess(({ path: p, method, status, bytes, ip }) => this.onRepoAccess(p, method, status, bytes, ip));
 				const isoDir = path.join(this.root || os.tmpdir(), "os-deploy-iso");
 				fs.mkdirSync(isoDir, { recursive: true });
 				this.httpServer.setRoot("/iso", isoDir);
 				const tls = this.ensureTls();
 				await this.httpServer.start(tls);
+				const logDir = path.join(this.root || os.tmpdir(), "os-deploy-logs");
+				this.syslog = new SyslogCollector(SYSLOG_PORT, path.join(logDir, "syslog.log"));
+				this.syslog.onLine = ({ ip, msg }) => this.onSyslogLine(ip, msg);
+				try {
+					await this.syslog.start();
+				} catch (e) {
+					this.syslog = null;
+					this.addSvcNote(`syslog :${SYSLOG_PORT} 监听失败（${e?.message || e}）——安装器实时日志不可用`);
+				}
 				for (const img of this.images) if (img.extracted && img.extractedDir) this.httpServer.setRoot(`/repo/${img.distroId}`, img.extractedDir);
 				if (!this.httpServer.httpsUp) this.addSvcNote(`HTTPS :${HTTPS_PORT} 未就绪（${this.httpServer.httpsError}）——虚拟光驱挂载将失败`);
 				this.serverRunning = true;
@@ -474,6 +491,65 @@ let OsDeployService = (() => {
 					error: String(e?.message || e)
 				};
 			}
+		}
+		/** /iso 与 /repo 访问观测——安装过程的关键遥测 */
+		onRepoAccess(p, method, status, bytes, ip) {
+			try {
+				if (p.startsWith("/iso/")) {
+					this.isoFetchCount++;
+					if (this.isoFetchCount === 1 || this.isoFetchCount % 100 === 0) {
+						console.log(`[osdeploy] virtual CD fetch #${this.isoFetchCount}: ${method} ${status} from ${ip}`);
+						const task = this.runningTaskBy(ip, "bmcHost");
+						if (task) this.addLog(task, "info", `虚拟光驱被 BMC 拉取 (req #${this.isoFetchCount}: ${method} ${status})`);
+					}
+					return;
+				}
+				if (!p.startsWith("/repo/")) return;
+				const task = this.runningTaskBy(ip, "osIp");
+				if (!task) return;
+				if (/install\.img$/i.test(p)) {
+					if (!this.repoSeen.get(task.id + ":install.img")) {
+						this.repoSeen.set(task.id + ":install.img", 1);
+						this.addLog(task, "info", "正在加载安装器 stage2 (install.img)");
+						task.stage = "stage2-loading";
+					}
+					return;
+				}
+				if (/\.rpm$/i.test(p)) {
+					const n = (this.rpmCounts.get(task.id) || 0) + 1;
+					this.rpmCounts.set(task.id, n);
+					const pkg = (p.split("/").pop() || "").replace(/\.rpm$/i, "");
+					this.addLog(task, "info", `安装软件包 #${n}: ${pkg}`);
+					task.stage = "installing-rpms";
+					task.progress = Math.max(task.progress, Math.min(45 + Math.floor(n * .12), 85));
+					return;
+				}
+				const key = task.id + ":meta:" + p;
+				if (!this.repoSeen.has(key)) {
+					this.repoSeen.set(key, 1);
+					const meta = p.split("/").pop() || p;
+					this.addLog(task, "info", `加载仓库元数据: ${meta}`);
+					task.stage = "repo-metadata";
+				}
+			} catch {}
+		}
+		/** 安装器 syslog 行 → 过滤关键事件入任务日志（全量原文已落盘 syslog.log） */
+		onSyslogLine(ip, msg) {
+			try {
+				const l = msg.replace(/\s+/g, " ").trim();
+				if (!l) return;
+				const task = this.runningTaskBy(ip, "osIp");
+				if (!task) return;
+				if (!/error|traceback|terminate|fatal|fail|exception|storage|kickstart|payload|metadata|partition|mounting|installing|transaction|bootload|multipath|blivet|started|finished|anaconda|network|dhcp|addr|dnf|rpm/i.test(l)) return;
+				const now = Date.now();
+				if (now - this.lastSyslogAt < 1500) return;
+				this.lastSyslogAt = now;
+				this.addLog(task, "info", `[anaconda] ${l.slice(0, 260)}`);
+			} catch {}
+		}
+		runningTaskBy(ip, field) {
+			for (const [, t] of this.tasks) if (t.status === "running" && t.device[field] === ip) return t;
+			return null;
 		}
 		/** 确保 <root>/certs/ 下有 TLS 证书（虚拟光驱 HTTPS 用）；缺失则落盘内嵌默认自签对。 */
 		ensureTls() {
@@ -516,8 +592,14 @@ let OsDeployService = (() => {
 					this.httpServer.stop();
 					this.httpServer = null;
 				}
+				if (this.syslog) {
+					this.syslog.stop();
+					this.syslog = null;
+				}
 				this.serverRunning = false;
 				this.serverStartedAt = null;
+				this.rpmCounts.clear();
+				this.repoSeen.clear();
 				this.save();
 				console.log("[osdeploy] service stopped");
 				return {
@@ -916,6 +998,8 @@ let OsDeployService = (() => {
 			task.status = "running";
 			task.startedAt = Date.now();
 			this.addLog(task, "info", `Starting deployment to ${task.device.bmcHost}...`);
+			this.rpmCounts.delete(task.id);
+			for (const k of Array.from(this.repoSeen.keys())) if (k.startsWith(task.id + ":")) this.repoSeen.delete(k);
 			const serverIp = await getRouteIp(task.device.bmcHost);
 			this.addLog(task, "info", `Server IP (routed to ${task.device.bmcHost}): ${serverIp}`);
 			const spec = {
@@ -941,7 +1025,7 @@ let OsDeployService = (() => {
 			};
 			const runner = new DeployRunner(spec, serverIp, HTTP_PORT, (stage, progress, log) => {
 				task.stage = stage;
-				if (progress >= 0) task.progress = progress;
+				if (progress >= 0) task.progress = Math.max(task.progress, progress);
 				if (log) this.addLog(task, "info", log);
 			});
 			this.runners.set(task.id, runner);
@@ -995,7 +1079,7 @@ let OsDeployService = (() => {
 				level,
 				msg
 			});
-			if (task.logs.length > 200) task.logs.splice(0, task.logs.length - 200);
+			if (task.logs.length > 2e3) task.logs.splice(0, task.logs.length - 2e3);
 		}
 	};
 })();

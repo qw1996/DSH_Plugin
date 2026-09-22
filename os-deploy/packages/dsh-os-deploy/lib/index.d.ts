@@ -11,6 +11,16 @@ declare class OsDeployService extends TypertRemoteService {
   serverStartedAt: number | null;
   private httpServer;
   private runners;
+  /** 安装器 syslog 收集（rd.syslog/inst.remotelog → 实时安装日志） */
+  private syslog;
+  /** BMC 拉盘请求计数（节流日志用） */
+  private isoFetchCount;
+  /** 每任务已装 RPM 计数（逐包日志 + 进度映射） */
+  private rpmCounts;
+  /** 每任务已记录过的仓库元数据/install.img（去重） */
+  private repoSeen;
+  /** syslog 入任务日志的节流时间戳 */
+  private lastSyslogAt;
   private root;
   private dataFile;
   private queueRunning;
@@ -18,6 +28,11 @@ declare class OsDeployService extends TypertRemoteService {
   [Service.init](): Promise<void>;
   serviceStatus(): Promise<ServiceStatusResult>;
   serviceStart(): Promise<ServiceControlResult>;
+  /** /iso 与 /repo 访问观测——安装过程的关键遥测 */
+  private onRepoAccess;
+  /** 安装器 syslog 行 → 过滤关键事件入任务日志（全量原文已落盘 syslog.log） */
+  private onSyslogLine;
+  private runningTaskBy;
   /** 确保 <root>/certs/ 下有 TLS 证书（虚拟光驱 HTTPS 用）；缺失则落盘内嵌默认自签对。 */
   private ensureTls;
   private addSvcNote;

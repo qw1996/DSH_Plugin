@@ -1,15 +1,12 @@
-import { createRequire } from "node:module";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
 import * as http from "http";
 import * as https from "https";
+import * as net from "net";
 import * as dgram from "dgram";
 import { execFileSync } from "child_process";
-//#region \0rolldown/runtime.js
-var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
-//#endregion
 //#region src/miniiso.ts
 const SEC = 2048;
 function b733(n) {
@@ -867,6 +864,8 @@ if [ -z "$TARGET" ]; then
   fi
 fi
 __R disk-resolved "$TARGET ($DISKLIST)"
+# 网络配置快照：安装器环境实际生效的地址与路由（slim 模式下 dracut 已配好）
+__R net-config "addr=$(ip -o -4 addr show scope global 2>/dev/null | awk '{print $2, $4}' | tr '\\n' '|') default=$(ip route show default 2>/dev/null | head -1)"
 cat > /tmp/osdeploy-disk.ks <<KSEOF
 ignoredisk --only-use=$TARGET
 clearpart --all --initlabel --disklabel=gpt
@@ -886,6 +885,8 @@ cp /tmp/osdeploy-pre.log /mnt/sysimage/root/osdeploy-pre.log 2>/dev/null || true
 
 %post --interpreter=/usr/bin/bash
 sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config 2>/dev/null || true
+__R2() { curl -s -m 8 -G --data-urlencode "m=deploy" --data-urlencode "task=${spec.taskId}" --data-urlencode "stage=$1" --data-urlencode "d=$2" "http://${serverIp}:${httpPort}/report" >/dev/null 2>&1 || true; }
+__R2 post-ssh "PermitRootLogin=yes"
 cat > /etc/systemd/system/osdeploy-report.service <<'EOFSVC'
 [Unit]
 Description=osdeploy firstboot report
@@ -898,6 +899,7 @@ ExecStart=/usr/bin/curl -s -m 10 "http://${serverIp}:${httpPort}/report?m=deploy
 WantedBy=multi-user.target
 EOFSVC
 systemctl enable osdeploy-report.service || true
+__R2 post-service "osdeploy-report enabled"
 %end
 `;
 }
@@ -975,10 +977,10 @@ d-i preseed/late_command string \\
 */
 function genVmediaGrubCfg(spec, isoLabel, opts) {
 	const slim = !!opts?.slim;
+	const serverIp = opts.serverIp;
+	const httpPort = opts?.httpPort || 8080;
 	const kargs = [];
 	if (slim) {
-		const serverIp = opts?.serverIp || "";
-		const httpPort = opts?.httpPort || 8080;
 		kargs.push(`inst.stage2=http://${serverIp}:${httpPort}/repo/${spec.distroId}/`);
 		const mac = String(spec.nicMac || "").toLowerCase();
 		const mask = prefixToMask(spec.osPrefixLen);
@@ -986,7 +988,7 @@ function genVmediaGrubCfg(spec, isoLabel, opts) {
 		kargs.push(`ip=${spec.osIp}::${spec.osGateway}:${mask}:${spec.hostname || "osdeploy"}:netboot0:none`);
 		kargs.push(`nameserver=${(spec.osDns || ["114.114.114.114"])[0]}`);
 	} else kargs.push(`inst.stage2=hd:LABEL=${isoLabel}`);
-	kargs.push(`inst.ks=hd:LABEL=${isoLabel}:/ks.cfg`, `ro`, `inst.geoloc=0`, `inst.cmdline`, `console=tty0 console=ttyS0,115200n8`, `smmu.bypassdev=0x1000:0x17`, `smmu.bypassdev=0x1000:0x15`, `video=efifb:off`, `fpi_to_tail=off`);
+	kargs.push(`inst.ks=hd:LABEL=${isoLabel}:/ks.cfg`, `ro`, `inst.geoloc=0`, `inst.cmdline`, `inst.remotelog=${serverIp}:514`, `rd.syslog=${serverIp}`, `console=tty0 console=ttyS0,115200n8`, `smmu.bypassdev=0x1000:0x17`, `smmu.bypassdev=0x1000:0x15`, `video=efifb:off`, `fpi_to_tail=off`);
 	return `# osdeploy generated (virtual media${slim ? ", slim" : ""}) grub.cfg for ${spec.hostname || spec.osIp}
 set default=0
 set timeout=3
@@ -1053,6 +1055,83 @@ function prefixToMask(prefix) {
 		mask & 255
 	].join(".");
 }
+/**
+* 极简 RFC3164 syslog 收集器（UDP 514 + TCP 514）。
+* 引导参数 rd.syslog=<ip>（dracut 阶段，UDP）与 inst.remotelog=<ip>:514
+* （anaconda，TCP 明文行）都会推到这里——安装器的每一条日志（软件包
+* 安装、存储配置、网络配置、错误）实时到达，是安装过程观测的王牌通道。
+* 原始 osdeploy 工具实证此机制在鲲鹏 iBMC + openEuler/麒麟上可用。
+*/
+var SyslogCollector = class {
+	sock = null;
+	tcp = null;
+	port;
+	stream = null;
+	lines = 0;
+	onLine = null;
+	constructor(port = 514, logFile) {
+		this.port = port;
+		if (logFile) {
+			fs.mkdirSync(path.dirname(logFile), { recursive: true });
+			this.stream = fs.createWriteStream(logFile, { flags: "a" });
+		}
+	}
+	start() {
+		return new Promise((resolve, reject) => {
+			this.sock = dgram.createSocket("udp4");
+			this.sock.on("error", (e) => reject(e));
+			this.sock.on("message", (buf, rinfo) => this.onMessage(buf, rinfo.address));
+			this.sock.bind(this.port, () => {
+				console.log(`[osdeploy] syslog collector listening on udp/${this.port}`);
+				resolve();
+			});
+			this.tcp = net.createServer((sock) => {
+				const ip = (sock.remoteAddress || "").replace(/^::ffff:/, "");
+				let buf = "";
+				sock.on("data", (d) => {
+					buf += d.toString("utf8");
+					let i;
+					while ((i = buf.indexOf("\n")) >= 0) {
+						const line = buf.slice(0, i).replace(/\0+$/, "");
+						buf = buf.slice(i + 1);
+						if (line.trim()) this.onMessage(Buffer.from(line, "utf8"), ip);
+					}
+				});
+				sock.on("error", () => {});
+			});
+			this.tcp.on("error", () => {});
+			this.tcp.listen(this.port);
+		});
+	}
+	stop() {
+		try {
+			if (this.sock) this.sock.close();
+		} catch {}
+		try {
+			if (this.tcp) this.tcp.close();
+		} catch {}
+		try {
+			if (this.stream) this.stream.end();
+		} catch {}
+		this.sock = null;
+		this.tcp = null;
+	}
+	onMessage(buf, ip) {
+		const raw = buf.toString("utf8").replace(/\0+$/, "");
+		const m = /^<(\d+)>([\s\S]*)$/.exec(raw);
+		const pri = m ? parseInt(m[1] || "13", 10) : 13;
+		const rest = m ? m[2] || "" : raw;
+		this.lines++;
+		if (this.stream) this.stream.write(`${(/* @__PURE__ */ new Date()).toISOString()} ${ip} ${rest}\n`);
+		if (this.onLine) try {
+			this.onLine({
+				ip,
+				severity: pri % 8,
+				msg: rest
+			});
+		} catch {}
+	}
+};
 var DeployHttpServer = class {
 	server = null;
 	tlsServer = null;
@@ -1060,8 +1139,7 @@ var DeployHttpServer = class {
 	tlsPort;
 	roots = /* @__PURE__ */ new Map();
 	reportHandler = null;
-	isoAccessHandler = null;
-	isoFetchCount = 0;
+	accessHandler = null;
 	/** HTTPS 443 是否成功监听（iBMC 虚拟光驱要求 https:// 镜像 URL） */
 	httpsUp = false;
 	httpsError = "";
@@ -1078,9 +1156,9 @@ var DeployHttpServer = class {
 	onReport(handler) {
 		this.reportHandler = handler;
 	}
-	/** /iso/* 拉取回调（BMC 拉取虚拟光驱镜像的节流日志：第 1 次及每 50 次一条） */
-	onIsoAccess(handler) {
-		this.isoAccessHandler = handler;
+	/** 所有静态文件访问回调（/iso 的 BMC 拉取、/repo 的安装器取包都经此观测） */
+	onAccess(handler) {
+		this.accessHandler = handler;
 	}
 	start(tls) {
 		return new Promise((resolve, reject) => {
@@ -1182,17 +1260,15 @@ var DeployHttpServer = class {
 				"Accept-Ranges": "bytes",
 				...code === 206 ? { "Content-Range": `bytes ${start}-${end}/${total}` } : {}
 			});
-			if (prefix === "/iso" && this.isoAccessHandler) {
-				this.isoFetchCount++;
-				if (this.isoFetchCount === 1 || this.isoFetchCount % 50 === 0) try {
-					this.isoAccessHandler({
-						count: this.isoFetchCount,
-						method: req.method || "",
-						status: code,
-						ip
-					});
-				} catch {}
-			}
+			if (this.accessHandler) try {
+				this.accessHandler({
+					path: pathname,
+					method: req.method || "",
+					status: code,
+					bytes: len,
+					ip
+				});
+			} catch {}
 			if (req.method === "HEAD") {
 				res.end();
 				return;
@@ -1390,7 +1466,7 @@ var DeployRunner = class {
 	}
 	async trySsh(ip) {
 		return new Promise((resolve) => {
-			const s = new (__require("net")).Socket();
+			const s = new net.Socket();
 			s.setTimeout(5e3);
 			s.on("connect", () => {
 				s.destroy();
@@ -1456,4 +1532,4 @@ function getRouteIp(target) {
 	});
 }
 //#endregion
-export { genDebianHttpGrubCfg as a, genVmediaGrubCfg as c, DEFAULT_TLS_CERT as d, DEFAULT_TLS_KEY as f, patchFatFile as h, extractIso as i, generateSelfSignedCert as l, buildMiniIso as m, DeployRunner as n, genKickstart as o, FatImage as p, RedfishClient as r, genPreseed as s, DeployHttpServer as t, getRouteIp as u };
+export { extractIso as a, genPreseed as c, getRouteIp as d, DEFAULT_TLS_CERT as f, patchFatFile as g, buildMiniIso as h, SyslogCollector as i, genVmediaGrubCfg as l, FatImage as m, DeployRunner as n, genDebianHttpGrubCfg as o, DEFAULT_TLS_KEY as p, RedfishClient as r, genKickstart as s, DeployHttpServer as t, generateSelfSignedCert as u };

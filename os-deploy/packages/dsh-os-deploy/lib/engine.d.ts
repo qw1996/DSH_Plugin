@@ -147,13 +147,36 @@ declare function genPreseed(spec: DeploySpec, serverIp: string, httpPort: number
  *    slim 需要 dracut 期网络：ifname= 把业务网卡 MAC 绑定自定义名
  *    （绕开 openEuler 系 dracut 055 的 enx<MAC> off-by-one 缺陷），ip= 静态配置。
  */
-declare function genVmediaGrubCfg(spec: DeploySpec, isoLabel: string, opts?: {
+declare function genVmediaGrubCfg(spec: DeploySpec, isoLabel: string, opts: {
   slim?: boolean;
-  serverIp?: string;
+  serverIp: string;
   httpPort?: number;
 }): string;
 /** Debian HTTP 引导 grub.cfg：kernel/initrd 由 grub 自身网络栈经 HTTP 拉取。 */
 declare function genDebianHttpGrubCfg(spec: DeploySpec, serverIp: string, httpPort: number): string;
+/**
+ * 极简 RFC3164 syslog 收集器（UDP 514 + TCP 514）。
+ * 引导参数 rd.syslog=<ip>（dracut 阶段，UDP）与 inst.remotelog=<ip>:514
+ * （anaconda，TCP 明文行）都会推到这里——安装器的每一条日志（软件包
+ * 安装、存储配置、网络配置、错误）实时到达，是安装过程观测的王牌通道。
+ * 原始 osdeploy 工具实证此机制在鲲鹏 iBMC + openEuler/麒麟上可用。
+ */
+declare class SyslogCollector {
+  private sock;
+  private tcp;
+  private port;
+  private stream;
+  lines: number;
+  onLine: ((info: {
+    ip: string;
+    severity: number;
+    msg: string;
+  }) => void) | null;
+  constructor(port?: number, logFile?: string);
+  start(): Promise<void>;
+  stop(): void;
+  private onMessage;
+}
 declare class DeployHttpServer {
   private server;
   private tlsServer;
@@ -161,8 +184,7 @@ declare class DeployHttpServer {
   private tlsPort;
   private roots;
   private reportHandler;
-  private isoAccessHandler;
-  private isoFetchCount;
+  private accessHandler;
   /** HTTPS 443 是否成功监听（iBMC 虚拟光驱要求 https:// 镜像 URL） */
   httpsUp: boolean;
   httpsError: string;
@@ -170,11 +192,12 @@ declare class DeployHttpServer {
   setRoot(prefix: string, dir: string): void;
   removeRoot(prefix: string): void;
   onReport(handler: (query: URLSearchParams, ip: string) => void): void;
-  /** /iso/* 拉取回调（BMC 拉取虚拟光驱镜像的节流日志：第 1 次及每 50 次一条） */
-  onIsoAccess(handler: (info: {
-    count: number;
+  /** 所有静态文件访问回调（/iso 的 BMC 拉取、/repo 的安装器取包都经此观测） */
+  onAccess(handler: (info: {
+    path: string;
     method: string;
     status: number;
+    bytes: number;
     ip: string;
   }) => void): void;
   start(tls?: {
@@ -219,4 +242,4 @@ declare class DeployRunner {
  */
 declare function getRouteIp(target: string): Promise<string>;
 //#endregion
-export { BmcInfo, DEFAULT_TLS_CERT, DEFAULT_TLS_KEY, DeployHttpServer, DeployRunner, DeploySpec, EngineConfig, FatImage, ProgressCallback, RedfishClient, buildMiniIso, extractIso, genDebianHttpGrubCfg, genKickstart, genPreseed, genVmediaGrubCfg, generateSelfSignedCert, getRouteIp, patchFatFile };
+export { BmcInfo, DEFAULT_TLS_CERT, DEFAULT_TLS_KEY, DeployHttpServer, DeployRunner, DeploySpec, EngineConfig, FatImage, ProgressCallback, RedfishClient, SyslogCollector, buildMiniIso, extractIso, genDebianHttpGrubCfg, genKickstart, genPreseed, genVmediaGrubCfg, generateSelfSignedCert, getRouteIp, patchFatFile };

@@ -8,6 +8,7 @@ import * as http from 'http'
 import * as https from 'https'
 import * as crypto from 'crypto'
 import * as os from 'os'
+import * as net from 'net'
 import * as dgram from 'dgram'
 import { buildMiniIso } from './miniiso'
 // 重导出：lib/engine.js 作为独立入口供测试/调试直接使用
@@ -277,6 +278,8 @@ if [ -z "$TARGET" ]; then
   fi
 fi
 __R disk-resolved "$TARGET ($DISKLIST)"
+# 网络配置快照：安装器环境实际生效的地址与路由（slim 模式下 dracut 已配好）
+__R net-config "addr=$(ip -o -4 addr show scope global 2>/dev/null | awk '{print $2, $4}' | tr '\\n' '|') default=$(ip route show default 2>/dev/null | head -1)"
 cat > /tmp/osdeploy-disk.ks <<KSEOF
 ignoredisk --only-use=$TARGET
 clearpart --all --initlabel --disklabel=gpt
@@ -296,6 +299,8 @@ cp /tmp/osdeploy-pre.log /mnt/sysimage/root/osdeploy-pre.log 2>/dev/null || true
 
 %post --interpreter=/usr/bin/bash
 sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config 2>/dev/null || true
+__R2() { curl -s -m 8 -G --data-urlencode "m=deploy" --data-urlencode "task=${spec.taskId}" --data-urlencode "stage=$1" --data-urlencode "d=$2" "http://${serverIp}:${httpPort}/report" >/dev/null 2>&1 || true; }
+__R2 post-ssh "PermitRootLogin=yes"
 cat > /etc/systemd/system/osdeploy-report.service <<'EOFSVC'
 [Unit]
 Description=osdeploy firstboot report
@@ -308,6 +313,7 @@ ExecStart=/usr/bin/curl -s -m 10 "http://${serverIp}:${httpPort}/report?m=deploy
 WantedBy=multi-user.target
 EOFSVC
 systemctl enable osdeploy-report.service || true
+__R2 post-service "osdeploy-report enabled"
 %end
 `
 }
@@ -387,14 +393,14 @@ d-i preseed/late_command string \\
  *    slim 需要 dracut 期网络：ifname= 把业务网卡 MAC 绑定自定义名
  *    （绕开 openEuler 系 dracut 055 的 enx<MAC> off-by-one 缺陷），ip= 静态配置。
  */
-export function genVmediaGrubCfg(spec: DeploySpec, isoLabel: string, opts?: {
-  slim?: boolean; serverIp?: string; httpPort?: number
+export function genVmediaGrubCfg(spec: DeploySpec, isoLabel: string, opts: {
+  slim?: boolean; serverIp: string; httpPort?: number
 }): string {
   const slim = !!opts?.slim
+  const serverIp = opts.serverIp
+  const httpPort = opts?.httpPort || 8080
   const kargs: string[] = []
   if (slim) {
-    const serverIp = opts?.serverIp || ''
-    const httpPort = opts?.httpPort || 8080
     kargs.push(`inst.stage2=http://${serverIp}:${httpPort}/repo/${spec.distroId}/`)
     // dracut 期静态网络（stage2 要从 HTTP 拉取）
     const mac = String(spec.nicMac || '').toLowerCase()
@@ -410,6 +416,9 @@ export function genVmediaGrubCfg(spec: DeploySpec, isoLabel: string, opts?: {
     `ro`,
     `inst.geoloc=0`,
     `inst.cmdline`,
+    // 安装器实时日志推送（原始工具实证）：dracut 阶段 UDP、anaconda 阶段 TCP
+    `inst.remotelog=${serverIp}:514`,
+    `rd.syslog=${serverIp}`,
     `console=tty0 console=ttyS0,115200n8`,
     `smmu.bypassdev=0x1000:0x17`,
     `smmu.bypassdev=0x1000:0x15`,
@@ -482,6 +491,80 @@ function prefixToMask(prefix: number): string {
   return [(mask >>> 24) & 0xFF, (mask >>> 16) & 0xFF, (mask >>> 8) & 0xFF, mask & 0xFF].join('.')
 }
 
+// ---------- Syslog 收集器（安装器实时日志） ----------
+/**
+ * 极简 RFC3164 syslog 收集器（UDP 514 + TCP 514）。
+ * 引导参数 rd.syslog=<ip>（dracut 阶段，UDP）与 inst.remotelog=<ip>:514
+ * （anaconda，TCP 明文行）都会推到这里——安装器的每一条日志（软件包
+ * 安装、存储配置、网络配置、错误）实时到达，是安装过程观测的王牌通道。
+ * 原始 osdeploy 工具实证此机制在鲲鹏 iBMC + openEuler/麒麟上可用。
+ */
+export class SyslogCollector {
+  private sock: dgram.Socket | null = null
+  private tcp: net.Server | null = null
+  private port: number
+  private stream: fs.WriteStream | null = null
+  lines = 0
+  onLine: ((info: { ip: string; severity: number; msg: string }) => void) | null = null
+
+  constructor(port = 514, logFile?: string) {
+    this.port = port
+    if (logFile) {
+      fs.mkdirSync(path.dirname(logFile), { recursive: true })
+      this.stream = fs.createWriteStream(logFile, { flags: 'a' })
+    }
+  }
+
+  start(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.sock = dgram.createSocket('udp4')
+      this.sock.on('error', e => reject(e))
+      this.sock.on('message', (buf, rinfo) => this.onMessage(buf, rinfo.address))
+      this.sock.bind(this.port, () => {
+        console.log(`[osdeploy] syslog collector listening on udp/${this.port}`)
+        resolve()
+      })
+      // TCP 侧：anaconda inst.remotelog 用 TCP SocketHandler 发换行分隔明文
+      this.tcp = net.createServer(sock => {
+        const ip = (sock.remoteAddress || '').replace(/^::ffff:/, '')
+        let buf = ''
+        sock.on('data', d => {
+          buf += d.toString('utf8')
+          let i: number
+          while ((i = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, i).replace(/\0+$/, '')
+            buf = buf.slice(i + 1)
+            if (line.trim()) this.onMessage(Buffer.from(line, 'utf8'), ip)
+          }
+        })
+        sock.on('error', () => { /* 连接中断忽略 */ })
+      })
+      this.tcp.on('error', () => { /* TCP 侧失败不致命 */ })
+      this.tcp.listen(this.port)
+    })
+  }
+
+  stop() {
+    try { if (this.sock) this.sock.close() } catch { /* ignore */ }
+    try { if (this.tcp) this.tcp.close() } catch { /* ignore */ }
+    try { if (this.stream) this.stream.end() } catch { /* ignore */ }
+    this.sock = null
+    this.tcp = null
+  }
+
+  private onMessage(buf: Buffer, ip: string) {
+    const raw = buf.toString('utf8').replace(/\0+$/, '')
+    const m = /^<(\d+)>([\s\S]*)$/.exec(raw)
+    const pri = m ? parseInt(m[1] || '13', 10) : 13
+    const rest = m ? m[2] || '' : raw
+    this.lines++
+    if (this.stream) this.stream.write(`${new Date().toISOString()} ${ip} ${rest}\n`)
+    if (this.onLine) {
+      try { this.onLine({ ip, severity: pri % 8, msg: rest }) } catch { /* 回调异常不致命 */ }
+    }
+  }
+}
+
 // ---------- HTTP Server (serves packages + receives reports) ----------
 export class DeployHttpServer {
   private server: http.Server | null = null
@@ -490,8 +573,7 @@ export class DeployHttpServer {
   private tlsPort: number
   private roots: Map<string, string> = new Map() // urlPrefix -> dir
   private reportHandler: ((query: URLSearchParams, ip: string) => void) | null = null
-  private isoAccessHandler: ((info: { count: number; method: string; status: number; ip: string }) => void) | null = null
-  private isoFetchCount = 0
+  private accessHandler: ((info: { path: string; method: string; status: number; bytes: number; ip: string }) => void) | null = null
   /** HTTPS 443 是否成功监听（iBMC 虚拟光驱要求 https:// 镜像 URL） */
   httpsUp = false
   httpsError = ''
@@ -504,9 +586,9 @@ export class DeployHttpServer {
   setRoot(prefix: string, dir: string) { this.roots.set(prefix, dir) }
   removeRoot(prefix: string) { this.roots.delete(prefix) }
   onReport(handler: (query: URLSearchParams, ip: string) => void) { this.reportHandler = handler }
-  /** /iso/* 拉取回调（BMC 拉取虚拟光驱镜像的节流日志：第 1 次及每 50 次一条） */
-  onIsoAccess(handler: (info: { count: number; method: string; status: number; ip: string }) => void) {
-    this.isoAccessHandler = handler
+  /** 所有静态文件访问回调（/iso 的 BMC 拉取、/repo 的安装器取包都经此观测） */
+  onAccess(handler: (info: { path: string; method: string; status: number; bytes: number; ip: string }) => void) {
+    this.accessHandler = handler
   }
 
   start(tls?: { cert: string; key: string }): Promise<void> {
@@ -595,12 +677,9 @@ export class DeployHttpServer {
         'Accept-Ranges': 'bytes',
         ...(code === 206 ? { 'Content-Range': `bytes ${start}-${end}/${total}` } : {}),
       })
-      // BMC 拉取虚拟光驱镜像（iBMC 以大量小 Range 请求流式读取）——节流记录
-      if (prefix === '/iso' && this.isoAccessHandler) {
-        this.isoFetchCount++
-        if (this.isoFetchCount === 1 || this.isoFetchCount % 50 === 0) {
-          try { this.isoAccessHandler({ count: this.isoFetchCount, method: req.method || '', status: code, ip }) } catch { /* ignore */ }
-        }
+      // 全路径访问观测（BMC 拉盘 / 安装器取包）——由上层决定如何记日志
+      if (this.accessHandler) {
+        try { this.accessHandler({ path: pathname, method: req.method || '', status: code, bytes: len, ip }) } catch { /* ignore */ }
       }
       if (req.method === 'HEAD') { res.end(); return }
       const stream = fs.createReadStream(fp, { start, end })
@@ -795,7 +874,6 @@ export class DeployRunner {
 
   private async trySsh(ip: string): Promise<boolean> {
     return new Promise((resolve) => {
-      const net = require('net')
       const s = new net.Socket()
       s.setTimeout(5000)
       s.on('connect', () => { s.destroy(); resolve(true) })

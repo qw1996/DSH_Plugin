@@ -23,7 +23,7 @@ import type {
   BrowsePathRequest, BrowsePathResult, FileEntry,
 } from './types'
 import {
-  RedfishClient, DeployHttpServer, DeployRunner, DeploySpec,
+  RedfishClient, DeployHttpServer, DeployRunner, DeploySpec, SyslogCollector,
   extractIso, genKickstart, genPreseed, getRouteIp,
 } from './engine'
 import { DEFAULT_TLS_CERT, DEFAULT_TLS_KEY } from './certs'
@@ -33,6 +33,8 @@ type Json = any
 const HTTP_PORT = 8080
 /** 虚拟光驱 HTTPS 端口（iBMC 要求 https:// 镜像 URL；443 免端口后缀） */
 const HTTPS_PORT = 443
+/** 安装器 syslog 接收端口（rd.syslog/inst.remotelog 推送） */
+const SYSLOG_PORT = 514
 
 const COMPONENTS: Record<string, InstallComponent[]> = {
   openEuler: [
@@ -64,6 +66,16 @@ export default class OsDeployService extends TypertRemoteService {
   serverStartedAt: number | null = null
   private httpServer: DeployHttpServer | null = null
   private runners: Map<string, DeployRunner> = new Map()
+  /** 安装器 syslog 收集（rd.syslog/inst.remotelog → 实时安装日志） */
+  private syslog: SyslogCollector | null = null
+  /** BMC 拉盘请求计数（节流日志用） */
+  private isoFetchCount = 0
+  /** 每任务已装 RPM 计数（逐包日志 + 进度映射） */
+  private rpmCounts: Map<string, number> = new Map()
+  /** 每任务已记录过的仓库元数据/install.img（去重） */
+  private repoSeen: Map<string, number> = new Map()
+  /** syslog 入任务日志的节流时间戳 */
+  private lastSyslogAt = 0
   private root: string | null = null
   private dataFile: string | null = null
   private queueRunning = false
@@ -80,6 +92,7 @@ export default class OsDeployService extends TypertRemoteService {
     // 清理逻辑挂在 Context 的 dispose 事件上。
     ctx.on('dispose', () => {
       if (this.httpServer) this.httpServer.stop()
+      if (this.syslog) this.syslog.stop()
       for (const [, r] of this.runners) r.cancel()
     })
   }
@@ -110,22 +123,25 @@ export default class OsDeployService extends TypertRemoteService {
       if (this.serverRunning) return { ok: true, status: await this.serviceStatus() }
       this.httpServer = new DeployHttpServer(HTTP_PORT, HTTPS_PORT)
       this.httpServer.onReport((query, ip) => this.handleReport(query, ip))
-      // BMC 拉取虚拟光驱镜像的节流日志（引导是否真的发生的关键观测）
-      this.httpServer.onIsoAccess(({ count, method, status, ip }) => {
-        console.log(`[osdeploy] virtual CD fetch #${count}: ${method} ${status} from ${ip}`)
-        for (const [, task] of this.tasks) {
-          if (task.status === 'running' && ip === task.device.bmcHost) {
-            this.addLog(task, 'info', `虚拟光驱被 BMC 拉取 (req #${count}: ${method} ${status})`)
-            break
-          }
-        }
-      })
+      // 全路径访问观测：/iso 的 BMC 拉盘 + /repo 的安装器取包（逐包日志）
+      this.isoFetchCount = 0
+      this.httpServer.onAccess(({ path: p, method, status, bytes, ip }) => this.onRepoAccess(p, method, status, bytes, ip))
       // 虚拟光驱镜像目录（HTTPS /iso 根）与 TLS 证书
       const isoDir = path.join(this.root || os.tmpdir(), 'os-deploy-iso')
       fs.mkdirSync(isoDir, { recursive: true })
       this.httpServer.setRoot('/iso', isoDir)
       const tls = this.ensureTls()
       await this.httpServer.start(tls)
+      // 安装器实时日志（rd.syslog/inst.remotelog 推送，UDP+TCP 514）
+      const logDir = path.join(this.root || os.tmpdir(), 'os-deploy-logs')
+      this.syslog = new SyslogCollector(SYSLOG_PORT, path.join(logDir, 'syslog.log'))
+      this.syslog.onLine = ({ ip, msg }) => this.onSyslogLine(ip, msg)
+      try {
+        await this.syslog.start()
+      } catch (e: any) {
+        this.syslog = null
+        this.addSvcNote(`syslog :${SYSLOG_PORT} 监听失败（${e?.message || e}）——安装器实时日志不可用`)
+      }
       // 为已解包的镜像重新注册 HTTP 根
       for (const img of this.images) {
         if (img.extracted && img.extractedDir) this.httpServer.setRoot(`/repo/${img.distroId}`, img.extractedDir)
@@ -143,6 +159,76 @@ export default class OsDeployService extends TypertRemoteService {
       this.httpServer = null
       return { ok: false, error: String(e?.message || e) }
     }
+  }
+
+  /** /iso 与 /repo 访问观测——安装过程的关键遥测 */
+  private onRepoAccess(p: string, method: string, status: number, bytes: number, ip: string) {
+    try {
+      if (p.startsWith('/iso/')) {
+        // BMC 以大量小 Range 请求流式拉盘，节流记录
+        this.isoFetchCount++
+        if (this.isoFetchCount === 1 || this.isoFetchCount % 100 === 0) {
+          console.log(`[osdeploy] virtual CD fetch #${this.isoFetchCount}: ${method} ${status} from ${ip}`)
+          const task = this.runningTaskBy(ip, 'bmcHost')
+          if (task) this.addLog(task, 'info', `虚拟光驱被 BMC 拉取 (req #${this.isoFetchCount}: ${method} ${status})`)
+        }
+        return
+      }
+      if (!p.startsWith('/repo/')) return
+      const task = this.runningTaskBy(ip, 'osIp')
+      if (!task) return
+      // stage2 安装器镜像（slim 模式从 HTTP 拉，可能分多段）
+      if (/install\.img$/i.test(p)) {
+        const seen = this.repoSeen.get(task.id + ':install.img')
+        if (!seen) {
+          this.repoSeen.set(task.id + ':install.img', 1)
+          this.addLog(task, 'info', '正在加载安装器 stage2 (install.img)')
+          task.stage = 'stage2-loading'
+        }
+        return
+      }
+      // 逐包：每个 RPM 一条日志（用户要求看到"正在安装什么包"）
+      if (/\.rpm$/i.test(p)) {
+        const n = (this.rpmCounts.get(task.id) || 0) + 1
+        this.rpmCounts.set(task.id, n)
+        const pkg = (p.split('/').pop() || '').replace(/\.rpm$/i, '')
+        this.addLog(task, 'info', `安装软件包 #${n}: ${pkg}`)
+        task.stage = 'installing-rpms'
+        task.progress = Math.max(task.progress, Math.min(45 + Math.floor(n * 0.12), 85))
+        return
+      }
+      // 仓库元数据（repomd/comps/treeinfo——去重）
+      const key = task.id + ':meta:' + p
+      if (!this.repoSeen.has(key)) {
+        this.repoSeen.set(key, 1)
+        const meta = p.split('/').pop() || p
+        this.addLog(task, 'info', `加载仓库元数据: ${meta}`)
+        task.stage = 'repo-metadata'
+      }
+    } catch { /* 观测日志失败不影响服务 */ }
+  }
+
+  /** 安装器 syslog 行 → 过滤关键事件入任务日志（全量原文已落盘 syslog.log） */
+  private onSyslogLine(ip: string, msg: string) {
+    try {
+      const l = msg.replace(/\s+/g, ' ').trim()
+      if (!l) return
+      const task = this.runningTaskBy(ip, 'osIp')
+      if (!task) return
+      const notable = /error|traceback|terminate|fatal|fail|exception|storage|kickstart|payload|metadata|partition|mounting|installing|transaction|bootload|multipath|blivet|started|finished|anaconda|network|dhcp|addr|dnf|rpm/i.test(l)
+      if (!notable) return
+      const now = Date.now()
+      if (now - this.lastSyslogAt < 1500) return  // 节流：最多 1 条/1.5s
+      this.lastSyslogAt = now
+      this.addLog(task, 'info', `[anaconda] ${l.slice(0, 260)}`)
+    } catch { /* ignore */ }
+  }
+
+  private runningTaskBy(ip: string, field: 'osIp' | 'bmcHost') {
+    for (const [, t] of this.tasks) {
+      if (t.status === 'running' && (t.device as any)[field] === ip) return t
+    }
+    return null
   }
 
   /** 确保 <root>/certs/ 下有 TLS 证书（虚拟光驱 HTTPS 用）；缺失则落盘内嵌默认自签对。 */
@@ -181,8 +267,11 @@ export default class OsDeployService extends TypertRemoteService {
       }
       this.queueRunning = false
       if (this.httpServer) { this.httpServer.stop(); this.httpServer = null }
+      if (this.syslog) { this.syslog.stop(); this.syslog = null }
       this.serverRunning = false
       this.serverStartedAt = null
+      this.rpmCounts.clear()
+      this.repoSeen.clear()
       this.save()
       console.log('[osdeploy] service stopped')
       return { ok: true, status: await this.serviceStatus() }
@@ -541,6 +630,11 @@ export default class OsDeployService extends TypertRemoteService {
     task.status = 'running'
     task.startedAt = Date.now()
     this.addLog(task, 'info', `Starting deployment to ${task.device.bmcHost}...`)
+    // 重置本任务的观测计数
+    this.rpmCounts.delete(task.id)
+    for (const k of Array.from(this.repoSeen.keys())) {
+      if (k.startsWith(task.id + ':')) this.repoSeen.delete(k)
+    }
 
     const serverIp = await getRouteIp(task.device.bmcHost)
     this.addLog(task, 'info', `Server IP (routed to ${task.device.bmcHost}): ${serverIp}`)
@@ -564,7 +658,8 @@ export default class OsDeployService extends TypertRemoteService {
 
     const runner = new DeployRunner(spec, serverIp, HTTP_PORT, (stage, progress, log) => {
       task.stage = stage
-      if (progress >= 0) task.progress = progress
+      // 进度单调递增（逐包进度与等待循环的进度不再互相回退）
+      if (progress >= 0) task.progress = Math.max(task.progress, progress)
       if (log) this.addLog(task, 'info', log)
     })
     this.runners.set(task.id, runner)
@@ -619,7 +714,8 @@ export default class OsDeployService extends TypertRemoteService {
   // ---------- 工具方法 ----------
   private addLog(task: DeployTask, level: string, msg: string) {
     task.logs.push({ ts: Date.now(), level: level as any, msg })
-    if (task.logs.length > 200) task.logs.splice(0, task.logs.length - 200)
+    // 逐包安装日志等详细观测需要更大容量（约 300-500 包 + syslog 事件）
+    if (task.logs.length > 2000) task.logs.splice(0, task.logs.length - 2000)
   }
 }
 
