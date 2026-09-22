@@ -80,6 +80,9 @@ const CSS = `
 .osd-diskhead{font-weight:600;opacity:.7;cursor:default}
 .osd-diskhead:hover{background:transparent}
 .osd-disk-sn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.85;font-family:ui-monospace,Consolas,monospace}
+/* 主面板容器（侧边栏入口） */
+.osd-panel{height:100%;overflow:auto;padding:20px 24px;box-sizing:border-box}
+.osd-num{font:inherit;padding:6px 8px;border:1px solid rgba(128,128,128,.4);border-radius:6px;background:transparent;width:90px}
 `
 
 export async function apply(ctx: any) {
@@ -140,7 +143,7 @@ export async function apply(ctx: any) {
   }
 
   function App() {
-    const [tab, setTab] = React.useState<'tasks' | 'images' | 'create'>('tasks')
+    const [tab, setTab] = React.useState<'tasks' | 'images' | 'create' | 'config'>('tasks')
     const [images, setImages] = React.useState<any[]>([])
     const [tasks, setTasks] = React.useState<any[]>([])
     const [servers, setServers] = React.useState<any[]>([])
@@ -208,12 +211,38 @@ export async function apply(ctx: any) {
     const [fileBrowser, setFileBrowser] = React.useState<{
       open: boolean; path: string; parent: string | null; entries: any[];
       roots: string[]; loading: boolean; error: string; selected: string | null; truncated: boolean;
-    }>({ open: false, path: '', parent: null, entries: [], roots: [], loading: false, error: '', selected: null, truncated: false })
+      mode: 'file' | 'dir';
+    }>({ open: false, path: '', parent: null, entries: [], roots: [], loading: false, error: '', selected: null, truncated: false, mode: 'file' })
     const [isoFilterOnly, setIsoFilterOnly] = React.useState(true)
     const [manualIsoInput, setManualIsoInput] = React.useState(false)
+    // ---------- 插件设置（存储路径/任务保留期） ----------
+    const [cfg, setCfg] = React.useState<any>(null)
+    const [cfgBusy, setCfgBusy] = React.useState(false)
+    const [cfgMsg, setCfgMsg] = React.useState('')
 
-    async function fbLoad(p: string | null) {
-      setFileBrowser((s: any) => ({ ...s, loading: true, error: '', selected: null }))
+    async function loadConfig() {
+      try {
+        const r = unwrap(await remote.getConfig())
+        setCfg({ storageRoot: r.config?.storageRoot || '', taskRetentionDays: r.config?.taskRetentionDays ?? 7, legacyRoot: r.legacyRoot || null })
+      } catch (e: any) { setCfgMsg('读取配置失败: ' + String(e?.message || e)) }
+    }
+    React.useEffect(() => { if (tab === 'config' && !cfg) loadConfig() }, [tab])
+
+    async function saveConfig() {
+      if (!cfg) return
+      setCfgBusy(true); setCfgMsg('')
+      try {
+        const r = unwrap(await remote.setConfig({ storageRoot: cfg.storageRoot, taskRetentionDays: Number(cfg.taskRetentionDays) }))
+        if (r.ok) {
+          setCfg((c: any) => ({ ...c, storageRoot: r.config?.storageRoot, taskRetentionDays: r.config?.taskRetentionDays }))
+          setCfgMsg('已保存（新数据将从下次写入起进入新路径；已解包的镜像仍在原处）')
+        } else setCfgMsg('保存失败: ' + (r.error || '未知错误'))
+      } catch (e: any) { setCfgMsg('保存失败: ' + String(e?.message || e)) }
+      finally { setCfgBusy(false) }
+    }
+
+    async function fbLoad(p: string | null, mode?: 'file' | 'dir') {
+      setFileBrowser((s: any) => ({ ...s, loading: true, error: '', selected: null, ...(mode ? { mode } : {}) }))
       try {
         const r = unwrap(await remote.browsePath({ path: p || null }))
         setFileBrowser((s: any) => ({
@@ -224,7 +253,7 @@ export async function apply(ctx: any) {
         setFileBrowser((s: any) => ({ ...s, loading: false, error: String(e?.message || e) }))
       }
     }
-    function fbOpen() { fbLoad(null) }
+    function fbOpen() { fbLoad(null, 'file') }
     function fbClose() { setFileBrowser((s: any) => ({ ...s, open: false })) }
     function fbConfirm() {
       const sel = fileBrowser.selected
@@ -373,6 +402,7 @@ export async function apply(ctx: any) {
         h('div', { className: 'osd-tab' + (tab === 'tasks' ? ' osd-tab-active' : ''), onClick: () => setTab('tasks') }, `安装任务 (${tasks.length})`),
         h('div', { className: 'osd-tab' + (tab === 'images' ? ' osd-tab-active' : ''), onClick: () => setTab('images') }, `镜像管理 (${images.length})`),
         h('div', { className: 'osd-tab' + (tab === 'create' ? ' osd-tab-active' : ''), onClick: () => setTab('create') }, '创建安装任务'),
+        h('div', { className: 'osd-tab' + (tab === 'config' ? ' osd-tab-active' : ''), onClick: () => setTab('config') }, '设置'),
       ),
 
       error && h('div', { style: { color: '#e5484d', fontSize: 12 } }, error),
@@ -582,11 +612,44 @@ export async function apply(ctx: any) {
         ),
       ),
 
-      // ===== ISO 文件选择弹窗 =====
+      // ===== 设置 Tab（存储路径 / 任务保留期） =====
+      tab === 'config' && h('div', { className: 'osd-card' },
+        h('div', { className: 'osd-h' }, '存储与保留'),
+        h('div', { className: 'osd-meta' }, '镜像解包仓库、每任务迷你 ISO、任务目录（详细安装日志）与状态文件都存放在存储根目录下。建议放到数据盘，避免撑爆系统盘。'),
+        h('div', { className: 'osd-row' },
+          h('label', { className: 'osd-field' },
+            h('span', { className: 'osd-meta' }, '存储根目录'),
+            h('div', { className: 'osd-pick-row' },
+              h('span', { className: 'osd-pick-path', title: cfg?.storageRoot || '' }, cfg?.storageRoot || '加载中…'),
+              btn('浏览…', () => fbLoad(null, 'dir'), '', cfgBusy),
+            ),
+          ),
+          manualIsoInput && field('存储根目录（手动输入）', cfg?.storageRoot || '', (v: string) => setCfg((c: any) => ({ ...c, storageRoot: v })), 'D:\\osdeploy-data'),
+          h('span', { className: 'osd-link', onClick: () => setManualIsoInput(!manualIsoInput) }, manualIsoInput ? '收起手动输入' : '手动输入路径'),
+        ),
+        h('div', { className: 'osd-row' },
+          h('label', { className: 'osd-field' },
+            h('span', { className: 'osd-meta' }, '任务保留天数（0 = 永久保留）'),
+            h('input', { className: 'osd-num', type: 'number', min: 0, max: 3650,
+              value: cfg?.taskRetentionDays ?? 7,
+              onChange: (e: any) => setCfg((c: any) => ({ ...c, taskRetentionDays: e.target.value })) }),
+          ),
+          h('span', { className: 'osd-meta' }, '已结束的任务到期后自动删除（连同任务目录与详细日志）'),
+        ),
+        h('div', { className: 'osd-row' },
+          btn('保存设置', saveConfig, 'osd-btn-primary', cfgBusy || !cfg?.storageRoot),
+          cfgMsg && h('span', { className: 'osd-meta' }, cfgMsg),
+        ),
+        cfg?.legacyRoot && h('div', { className: 'osd-kv' },
+          `检测到旧版数据目录 ${cfg.legacyRoot}\\os-deploy-repo 等——已注册镜像的解包数据仍在原处继续可用；可在镜像管理中删除镜像（会清理其解包目录）后重新注册到新路径。`),
+        h('div', { className: 'osd-kv' }, `目录结构：repo/（解包仓库）· iso/（每任务迷你ISO，任务结束即删）· tasks/<任务ID>/（install.log + anaconda.log 详细日志）· logs/syslog.log`),
+      ),
+
+      // ===== 文件/目录选择弹窗 =====
       fileBrowser.open && h('div', { className: 'osd-modal-backdrop', onClick: fbClose },
         h('div', { className: 'osd-modal', onClick: (e: any) => e.stopPropagation() },
           h('div', { className: 'osd-modal-h' },
-            h('span', null, '选择 ISO 镜像文件'),
+            h('span', null, fileBrowser.mode === 'dir' ? '选择目录' : '选择 ISO 镜像文件'),
             h('span', { className: 'osd-link', onClick: fbClose }, '✕ 关闭'),
           ),
           // 面包屑 + 上级 + 主目录
@@ -602,36 +665,43 @@ export async function apply(ctx: any) {
               key: r, className: 'osd-crumb', onClick: () => fbLoad(r),
             }, r.endsWith('\\') ? r.slice(0, -1) : r)),
           ),
-          // 过滤与提示
+          // 过滤与提示（目录模式下只显示子目录）
           h('div', { className: 'osd-row' },
-            h('label', { className: 'osd-chip' + (isoFilterOnly ? ' osd-chip-on' : ''), onClick: () => setIsoFilterOnly(!isoFilterOnly) },
+            fileBrowser.mode === 'file' && h('label', { className: 'osd-chip' + (isoFilterOnly ? ' osd-chip-on' : ''), onClick: () => setIsoFilterOnly(!isoFilterOnly) },
               '仅显示 .iso 文件'),
             fileBrowser.loading && h('span', { className: 'osd-meta' }, '加载中…'),
             fileBrowser.error && h('span', { className: 'osd-meta', style: { color: '#e5484d' } }, fileBrowser.error),
           ),
-          // 文件列表：目录可进入，文件可选中
+          // 列表：目录点击进入；文件模式下单击选中文件，双击确认
           h('div', { className: 'osd-modal-list' },
             fileBrowser.entries
-              .filter((e: any) => e.isDir || !isoFilterOnly || /\.iso$/i.test(e.name))
+              .filter((e: any) => {
+                if (e.isDir) return true
+                if (fileBrowser.mode === 'dir') return false
+                return !isoFilterOnly || /\.iso$/i.test(e.name)
+              })
               .map((e: any) => h('div', {
                 key: e.path,
-                className: 'osd-filerow' + (fileBrowser.selected === e.path ? ' osd-filerow-selected' : ''),
-                onClick: () => { if (e.isDir) fbLoad(e.path); else setFileBrowser((s: any) => ({ ...s, selected: e.path })) },
-                onDoubleClick: () => { if (!e.isDir) fbConfirm() },
+                className: 'osd-filerow' + (fileBrowser.mode === 'file' && fileBrowser.selected === e.path ? ' osd-filerow-selected' : ''),
+                onClick: () => { if (e.isDir) fbLoad(e.path); else if (fileBrowser.mode === 'file') setFileBrowser((s: any) => ({ ...s, selected: e.path })) },
+                onDoubleClick: () => { if (!e.isDir && fileBrowser.mode === 'file') fbConfirm() },
               },
                 h('span', { className: 'osd-filerow-icon' }, e.isDir ? '📁' : '📄'),
                 h('span', { className: 'osd-filerow-name' }, e.name),
                 !e.isDir && e.sizeBytes != null && h('span', { className: 'osd-filerow-size' }, `${(e.sizeBytes / 1073741824).toFixed(2)} GB`),
               )),
             !fileBrowser.loading && fileBrowser.entries
-              .filter((e: any) => e.isDir || !isoFilterOnly || /\.iso$/i.test(e.name)).length === 0
-              && h('div', { className: 'osd-meta', style: { padding: '8px' } }, '此目录没有 .iso 文件（可切换显示全部文件）'),
+              .filter((e: any) => e.isDir || (fileBrowser.mode === 'file' && (!isoFilterOnly || /\.iso$/i.test(e.name)))).length === 0
+              && h('div', { className: 'osd-meta', style: { padding: '8px' } }, fileBrowser.mode === 'dir' ? '此目录没有子目录' : '此目录没有 .iso 文件（可切换显示全部文件）'),
           ),
           h('div', { className: 'osd-modal-foot' },
             h('span', { className: 'osd-meta', style: { marginRight: 'auto', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '50%' },
-              title: fileBrowser.selected || '' }, fileBrowser.selected ? `已选: ${fileBrowser.selected.split(/[\\/]/).pop()}` : '未选择文件'),
+              title: fileBrowser.mode === 'dir' ? fileBrowser.path : fileBrowser.selected || '' },
+              fileBrowser.mode === 'dir' ? `当前目录: ${fileBrowser.path}` : (fileBrowser.selected ? `已选: ${fileBrowser.selected.split(/[\\/]/).pop()}` : '未选择文件')),
             btn('取消', fbClose),
-            btn('选择此文件', fbConfirm, 'osd-btn-primary', !fileBrowser.selected),
+            fileBrowser.mode === 'dir'
+              ? btn('选择此目录', () => { setCfg((c: any) => ({ ...c, storageRoot: fileBrowser.path })); fbClose() }, 'osd-btn-primary', !fileBrowser.path)
+              : btn('选择此文件', fbConfirm, 'osd-btn-primary', !fileBrowser.selected),
           ),
         ),
       ),
@@ -657,8 +727,38 @@ export async function apply(ctx: any) {
     }
   }
 
-  ctx.slots.inject('settings.section', () => ctx.slots.register(
-    { name: 'settings.section', id: 'os-deploy', order: 51, label: 'OS 部署' },
-    () => h(Boundary, null, h(App)),
+  /** 侧边栏图标（服务器/部署）：继承 currentColor，随主题与激活态变化。 */
+  function SidebarIcon(props: { size: number; active: boolean }) {
+    const s = props.size || 18
+    return h('svg', {
+      width: s, height: s, viewBox: '0 0 24 24', fill: 'none',
+      stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round',
+      'aria-hidden': 'true',
+    },
+      h('rect', { x: 3, y: 3.5, width: 18, height: 7, rx: 1.5 }),
+      h('rect', { x: 3, y: 13.5, width: 18, height: 7, rx: 1.5 }),
+      h('circle', { cx: 6.8, cy: 7, r: 0.9, fill: 'currentColor', stroke: 'none' }),
+      h('circle', { cx: 6.8, cy: 17, r: 0.9, fill: 'currentColor', stroke: 'none' }),
+      h('path', { d: 'M11.5 7h6' }),
+      h('path', { d: 'M11.5 17h6' }),
+      h('path', { d: 'M12 10.5v3' }),
+    )
+  }
+
+  /** 主面板容器：占满主区域并滚动。 */
+  function PanelHost() {
+    return h('div', { className: 'osd-panel' }, h(App))
+  }
+
+  // 主界面侧边栏面板（新会话按钮下方）：
+  //   sidebar.panellist —— 图标行（点击 → layout.selectPanel('os-deploy')）
+  //   main(key)         —— 面板内容（仅选中该面板时挂载，后台零轮询）
+  ctx.slots.inject('main', () => ctx.slots.register(
+    { name: 'main', key: 'os-deploy' },
+    () => h(Boundary, null, h(PanelHost)),
+  ))
+  ctx.slots.inject('sidebar.panellist', () => ctx.slots.register(
+    { name: 'sidebar.panellist', id: 'os-deploy', order: 0, label: 'OS 部署' },
+    (props: any) => h(SidebarIcon, { size: props?.size || 18, active: !!props?.active }),
   ))
 }

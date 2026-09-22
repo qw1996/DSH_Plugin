@@ -1,5 +1,4 @@
-import { BrowsePathRequest, BrowsePathResult, CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, DeployTask, ExtractImageRequest, ExtractImageResult, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, IsoImage, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, ServiceControlResult, ServiceStatusResult } from "./types/types.js";
-import { Service } from "@deepseek-ai/cordis";
+import { BrowsePathRequest, BrowsePathResult, CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, DeployTask, ExtractImageRequest, ExtractImageResult, GetConfigResult, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, IsoImage, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, ServiceControlResult, ServiceStatusResult, SetConfigRequest, SetConfigResult } from "./types/types.js";
 import { TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 //#region src/index.d.ts
 declare class OsDeployService extends TypertRemoteService {
@@ -22,10 +21,28 @@ declare class OsDeployService extends TypertRemoteService {
   /** syslog 入任务日志的节流时间戳 */
   private lastSyslogAt;
   private root;
-  private dataFile;
+  /** 状态懒加载：DSH web 启动阶段零读盘零日志，首次实际使用才加载 */
+  private stateLoaded;
+  /** 任务保留期清扫定时器（服务运行期间每小时一次） */
+  private sweepTimer;
+  private cfg;
+  private cfgFile;
   private queueRunning;
   constructor(ctx: any);
-  [Service.init](): Promise<void>;
+  private get storageRoot();
+  private repoDirOf;
+  private isoDirPath;
+  taskDirOf(taskId: string): string;
+  private logsDirPath;
+  private statePath;
+  /** 升级前的旧数据根（存在则提示可迁移/清理） */
+  private legacyRoot;
+  private loadConfig;
+  private saveConfig;
+  /** 状态懒加载（含旧版 state.json 迁移到 storageRoot） */
+  private ensureState;
+  getConfig(): Promise<GetConfigResult>;
+  setConfig(req: SetConfigRequest): Promise<SetConfigResult>;
   serviceStatus(): Promise<ServiceStatusResult>;
   serviceStart(): Promise<ServiceControlResult>;
   /** /iso 与 /repo 访问观测——安装过程的关键遥测 */
@@ -38,8 +55,11 @@ declare class OsDeployService extends TypertRemoteService {
   private addSvcNote;
   serviceStop(): Promise<ServiceControlResult>;
   serviceRestart(): Promise<ServiceControlResult>;
-  private load;
   private save;
+  /** 终态任务保留期清扫：到期任务连同任务目录一起删除 */
+  private sweepExpiredTasks;
+  /** 删除任务目录（详细安装日志等）与迷你 ISO 残留 */
+  private removeTaskDir;
   listServers(): Promise<GetServerListResult>;
   /** 列出可用根：win32 枚举存在的盘符，其余平台返回 '/'。 */
   private listRoots;

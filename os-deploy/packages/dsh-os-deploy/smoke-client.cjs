@@ -53,37 +53,37 @@ const ns = {
 };
 
 let mounted = null;
-let slotFactory = null;
+let mainPanel = null;
+let sidebarEntry = null;
 const fakeCtx = {
   effect: () => () => {},
   get: (name) => (name === 'remote.osDeploy' ? ns : undefined),
   remote: { $mount: async (c) => { mounted = c; return async () => {}; } },
   slots: {
     inject: (_slot, reg) => { reg(); },
-    register: (_opts, comp) => { slotFactory = comp; return () => {}; },
+    register: (opts, comp) => {
+      if (opts.name === 'main') mainPanel = comp;
+      if (opts.name === 'sidebar.panellist') sidebarEntry = { opts, comp };
+    },
   },
 };
 
 out.apply(fakeCtx).then(async () => {
   console.log('挂载描述符:', mounted?.descriptors?.length, '个（包 ' + mounted?.package + '）');
-  if (!slotFactory) throw new Error('设置槽未注册');
-
+  if (!mainPanel) throw new Error('main 面板未注册');
+  if (!sidebarEntry) throw new Error('sidebar.panellist 图标未注册');
+  console.log('sidebar 图标: id=' + sidebarEntry.opts.id + ' label=' + sidebarEntry.opts.label);
   const React = require('react');
   const { renderToString } = require('react-dom/server');
-  // 槽工厂通常为 () => h(Component) —— 直接调用取元素再渲染
-  let el;
-  try {
-    el = slotFactory();
-  } catch {
-    el = slotFactory; // 有些封装直接给元素/组件
-  }
-  if (typeof el === 'function') el = React.createElement(el);
-  const html1 = renderToString(el);
-  console.log('初始渲染:', html1.length, '字符，含"部署服务":', html1.includes('部署服务'));
-
-  // 等 50ms 让 useEffect 轮询跑一轮（SSR 不跑 effect——改为直接复渲染验证 running 态）
-  console.log('渲染成功，无未捕获异常 ✓');
-  // 额外验证：服务运行态数据进入渲染不崩溃（模拟 setSvc 后的树）
-  const html2 = renderToString(el);
-  console.log('二次渲染:', html2.length, '字符 ✓');
+  // 图标组件可渲染（SVG）
+  const iconHtml = renderToString(React.createElement(sidebarEntry.comp, { size: 18, active: true }));
+  if (!iconHtml.includes('<svg')) throw new Error('图标不是 SVG');
+  console.log('sidebar 图标渲染 OK (' + iconHtml.length + ' 字符)');
+  // 主面板内容
+  const html1 = renderToString(mainPanel());
+  console.log('主面板初始渲染:', html1.length, '字符，含"部署服务":', html1.includes('部署服务'));
+  if (!html1.includes('部署服务')) throw new Error('主面板内容缺失');
+  const html2 = renderToString(mainPanel());
+  console.log('二次渲染:', html2.length, '字符 OK');
+  console.log('全部通过 OK');
 }).catch(e => { console.error('FAIL:', e); process.exit(1); });

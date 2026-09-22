@@ -183,6 +183,30 @@ export interface ServiceControlResult {
   error?: string
 }
 
+// ---------- 插件配置 ----------
+export interface OsDeployConfig {
+  /** 数据根目录：解包仓库/迷你ISO/任务目录/日志/状态文件都放这里 */
+  storageRoot: string
+  /** 终态任务保留天数（到期自动删除任务及其目录） */
+  taskRetentionDays: number
+}
+
+export interface GetConfigResult {
+  config: OsDeployConfig
+  /** 升级前的旧数据位置（提示用户可手动迁移/清理） */
+  legacyRoot: string | null
+}
+
+export interface SetConfigRequest {
+  storageRoot?: string
+  taskRetentionDays?: number
+}
+export interface SetConfigResult {
+  ok: boolean
+  config?: OsDeployConfig
+  error?: string
+}
+
 // ---------- 文件浏览（镜像选择弹窗） ----------
 export interface BrowsePathRequest {
   path?: string | null

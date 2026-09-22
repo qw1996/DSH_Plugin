@@ -1,5 +1,4 @@
 import { a as extractIso, d as getRouteIp, f as DEFAULT_TLS_CERT, i as SyslogCollector, n as DeployRunner, p as DEFAULT_TLS_KEY, r as RedfishClient, t as DeployHttpServer } from "./engine-fhVBmOiQ.js";
-import { Service } from "@deepseek-ai/cordis";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import * as fs from "fs";
 import * as path from "path";
@@ -168,6 +167,8 @@ const COMPONENTS = {
 let OsDeployService = (() => {
 	let _classSuper = TypertRemoteService;
 	let _instanceExtraInitializers = [];
+	let _getConfig_decorators;
+	let _setConfig_decorators;
 	let _serviceStatus_decorators;
 	let _serviceStart_decorators;
 	let _serviceStop_decorators;
@@ -188,6 +189,8 @@ let OsDeployService = (() => {
 	return class OsDeployService extends _classSuper {
 		static {
 			const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+			_getConfig_decorators = [Remote("getConfig")];
+			_setConfig_decorators = [Remote("setConfig")];
 			_serviceStatus_decorators = [Remote("serviceStatus")];
 			_serviceStart_decorators = [Remote("serviceStart")];
 			_serviceStop_decorators = [Remote("serviceStop")];
@@ -205,6 +208,28 @@ let OsDeployService = (() => {
 			_getTaskDetail_decorators = [Remote("getTaskDetail")];
 			_cancelTask_decorators = [Remote("cancelTask")];
 			_deleteTask_decorators = [Remote("deleteTask")];
+			__esDecorate(this, null, _getConfig_decorators, {
+				kind: "method",
+				name: "getConfig",
+				static: false,
+				private: false,
+				access: {
+					has: (obj) => "getConfig" in obj,
+					get: (obj) => obj.getConfig
+				},
+				metadata: _metadata
+			}, null, _instanceExtraInitializers);
+			__esDecorate(this, null, _setConfig_decorators, {
+				kind: "method",
+				name: "setConfig",
+				static: false,
+				private: false,
+				access: {
+					has: (obj) => "setConfig" in obj,
+					get: (obj) => obj.setConfig
+				},
+				metadata: _metadata
+			}, null, _instanceExtraInitializers);
 			__esDecorate(this, null, _serviceStatus_decorators, {
 				kind: "method",
 				name: "serviceStatus",
@@ -423,24 +448,138 @@ let OsDeployService = (() => {
 		/** syslog 入任务日志的节流时间戳 */
 		lastSyslogAt = 0;
 		root = null;
-		dataFile = null;
+		/** 状态懒加载：DSH web 启动阶段零读盘零日志，首次实际使用才加载 */
+		stateLoaded = false;
+		/** 任务保留期清扫定时器（服务运行期间每小时一次） */
+		sweepTimer = null;
+		cfg = {
+			storageRoot: "",
+			taskRetentionDays: 7
+		};
+		cfgFile = null;
 		queueRunning = false;
 		constructor(ctx) {
 			super(ctx, "osDeploy");
 			const sp = ctx.get("sandboxPolicy");
 			if (sp && typeof sp.workspaceRoot === "string" && sp.workspaceRoot) this.root = sp.workspaceRoot.replace(/[\\/]+$/, "");
-			this.dataFile = this.root ? path.join(this.root, "dsh-os-deploy-state.json") : null;
-			this.load();
+			this.cfgFile = this.root ? path.join(this.root, "dsh-os-deploy-config.json") : null;
+			this.loadConfig();
 			ctx.on("dispose", () => {
 				if (this.httpServer) this.httpServer.stop();
 				if (this.syslog) this.syslog.stop();
+				if (this.sweepTimer) clearInterval(this.sweepTimer);
 				for (const [, r] of this.runners) r.cancel();
 			});
 		}
-		async [Service.init]() {
-			console.log("[osdeploy] service loaded (idle) — 在面板点击「启动」后才会开启部署服务");
+		get storageRoot() {
+			return this.cfg.storageRoot || path.join(this.root || process.cwd(), "osdeploy-data");
+		}
+		repoDirOf(distroId) {
+			return path.join(this.storageRoot, "repo", distroId);
+		}
+		isoDirPath() {
+			return path.join(this.storageRoot, "iso");
+		}
+		taskDirOf(taskId) {
+			return path.join(this.storageRoot, "tasks", taskId);
+		}
+		logsDirPath() {
+			return path.join(this.storageRoot, "logs");
+		}
+		statePath() {
+			return path.join(this.storageRoot, "state.json");
+		}
+		/** 升级前的旧数据根（存在则提示可迁移/清理） */
+		legacyRoot() {
+			const legacy = this.root ? path.join(this.root, "os-deploy-repo") : null;
+			return legacy && fs.existsSync(legacy) ? this.root : null;
+		}
+		loadConfig() {
+			if (!this.cfgFile || !fs.existsSync(this.cfgFile)) return;
+			try {
+				const raw = JSON.parse(fs.readFileSync(this.cfgFile, "utf8"));
+				if (typeof raw.storageRoot === "string" && raw.storageRoot) this.cfg.storageRoot = raw.storageRoot;
+				if (typeof raw.taskRetentionDays === "number" && raw.taskRetentionDays >= 0) this.cfg.taskRetentionDays = raw.taskRetentionDays;
+			} catch {}
+		}
+		saveConfig() {
+			if (!this.cfgFile) return;
+			try {
+				fs.writeFileSync(this.cfgFile, JSON.stringify(this.cfg, null, 2), "utf8");
+			} catch {}
+		}
+		/** 状态懒加载（含旧版 state.json 迁移到 storageRoot） */
+		ensureState() {
+			if (this.stateLoaded) return;
+			this.stateLoaded = true;
+			const readState = (file) => {
+				const data = JSON.parse(fs.readFileSync(file, "utf8"));
+				this.images = data.images || [];
+				this.tasks = /* @__PURE__ */ new Map();
+				for (const t of data.tasks || []) this.tasks.set(t.id, t);
+			};
+			try {
+				const p = this.statePath();
+				if (fs.existsSync(p)) {
+					readState(p);
+					return;
+				}
+				const legacy = this.root ? path.join(this.root, "dsh-os-deploy-state.json") : null;
+				if (legacy && fs.existsSync(legacy)) {
+					readState(legacy);
+					this.save();
+					try {
+						fs.renameSync(legacy, legacy + ".migrated");
+					} catch {}
+				}
+			} catch {}
+		}
+		async getConfig() {
+			return {
+				config: {
+					storageRoot: this.storageRoot,
+					taskRetentionDays: this.cfg.taskRetentionDays
+				},
+				legacyRoot: this.legacyRoot()
+			};
+		}
+		async setConfig(req) {
+			try {
+				if (req.storageRoot !== void 0) {
+					const p = req.storageRoot.trim();
+					if (!p) return {
+						ok: false,
+						error: "存储路径不能为空"
+					};
+					fs.mkdirSync(p, { recursive: true });
+					this.cfg.storageRoot = p;
+				}
+				if (req.taskRetentionDays !== void 0) {
+					const d = Math.floor(Number(req.taskRetentionDays));
+					if (!Number.isFinite(d) || d < 0 || d > 3650) return {
+						ok: false,
+						error: "保留天数需为 0-3650（0 = 不自动删除）"
+					};
+					this.cfg.taskRetentionDays = d;
+				}
+				this.saveConfig();
+				if (this.stateLoaded) this.save();
+				return {
+					ok: true,
+					config: {
+						storageRoot: this.storageRoot,
+						taskRetentionDays: this.cfg.taskRetentionDays
+					}
+				};
+			} catch (e) {
+				return {
+					ok: false,
+					error: String(e?.message || e)
+				};
+			}
 		}
 		async serviceStatus() {
+			this.ensureState();
 			return {
 				running: this.serverRunning,
 				port: HTTP_PORT,
@@ -456,17 +595,17 @@ let OsDeployService = (() => {
 					ok: true,
 					status: await this.serviceStatus()
 				};
+				this.ensureState();
 				this.httpServer = new DeployHttpServer(HTTP_PORT, HTTPS_PORT);
 				this.httpServer.onReport((query, ip) => this.handleReport(query, ip));
 				this.isoFetchCount = 0;
 				this.httpServer.onAccess(({ path: p, method, status, bytes, ip }) => this.onRepoAccess(p, method, status, bytes, ip));
-				const isoDir = path.join(this.root || os.tmpdir(), "os-deploy-iso");
-				fs.mkdirSync(isoDir, { recursive: true });
-				this.httpServer.setRoot("/iso", isoDir);
+				fs.mkdirSync(this.isoDirPath(), { recursive: true });
+				this.httpServer.setRoot("/iso", this.isoDirPath());
 				const tls = this.ensureTls();
 				await this.httpServer.start(tls);
-				const logDir = path.join(this.root || os.tmpdir(), "os-deploy-logs");
-				this.syslog = new SyslogCollector(SYSLOG_PORT, path.join(logDir, "syslog.log"));
+				fs.mkdirSync(this.logsDirPath(), { recursive: true });
+				this.syslog = new SyslogCollector(SYSLOG_PORT, path.join(this.logsDirPath(), "syslog.log"));
 				this.syslog.onLine = ({ ip, msg }) => this.onSyslogLine(ip, msg);
 				try {
 					await this.syslog.start();
@@ -478,7 +617,10 @@ let OsDeployService = (() => {
 				if (!this.httpServer.httpsUp) this.addSvcNote(`HTTPS :${HTTPS_PORT} 未就绪（${this.httpServer.httpsError}）——虚拟光驱挂载将失败`);
 				this.serverRunning = true;
 				this.serverStartedAt = Date.now();
-				console.log(`[osdeploy] HTTP server listening on 0.0.0.0:${HTTP_PORT}, HTTPS on :${HTTPS_PORT}`);
+				console.log(`[osdeploy] service started: storage=${this.storageRoot} HTTP:${HTTP_PORT} HTTPS:${HTTPS_PORT}`);
+				this.sweepExpiredTasks();
+				if (this.sweepTimer) clearInterval(this.sweepTimer);
+				this.sweepTimer = setInterval(() => this.sweepExpiredTasks(), 36e5);
 				this.processQueue();
 				return {
 					ok: true,
@@ -540,6 +682,9 @@ let OsDeployService = (() => {
 				if (!l) return;
 				const task = this.runningTaskBy(ip, "osIp");
 				if (!task) return;
+				try {
+					fs.appendFileSync(path.join(this.taskDirOf(task.id), "anaconda.log"), `${(/* @__PURE__ */ new Date()).toISOString()} ${l}\n`, "utf8");
+				} catch {}
 				if (!/error|traceback|terminate|fatal|fail|exception|storage|kickstart|payload|metadata|partition|mounting|installing|transaction|bootload|multipath|blivet|started|finished|anaconda|network|dhcp|addr|dnf|rpm/i.test(l)) return;
 				const now = Date.now();
 				if (now - this.lastSyslogAt < 1500) return;
@@ -596,6 +741,10 @@ let OsDeployService = (() => {
 					this.syslog.stop();
 					this.syslog = null;
 				}
+				if (this.sweepTimer) {
+					clearInterval(this.sweepTimer);
+					this.sweepTimer = null;
+				}
 				this.serverRunning = false;
 				this.serverStartedAt = null;
 				this.rpmCounts.clear();
@@ -617,26 +766,48 @@ let OsDeployService = (() => {
 			await this.serviceStop();
 			return this.serviceStart();
 		}
-		load() {
-			if (!this.dataFile || !fs.existsSync(this.dataFile)) return;
-			try {
-				const data = JSON.parse(fs.readFileSync(this.dataFile, "utf8"));
-				this.images = data.images || [];
-				for (const t of data.tasks || []) this.tasks.set(t.id, t);
-			} catch (e) {
-				console.error("[osdeploy] load state error:", e);
-			}
-		}
 		save() {
-			if (!this.dataFile) return;
 			try {
-				fs.writeFileSync(this.dataFile, JSON.stringify({
+				fs.mkdirSync(this.storageRoot, { recursive: true });
+				fs.writeFileSync(this.statePath(), JSON.stringify({
 					images: this.images,
 					tasks: Array.from(this.tasks.values())
 				}, null, 2));
 			} catch (e) {
 				console.error("[osdeploy] save state error:", e);
 			}
+		}
+		/** 终态任务保留期清扫：到期任务连同任务目录一起删除 */
+		sweepExpiredTasks() {
+			if (this.cfg.taskRetentionDays <= 0) return;
+			const cutoff = Date.now() - this.cfg.taskRetentionDays * 864e5;
+			const expired = [];
+			for (const [id, t] of this.tasks) {
+				if (t.status === "queued" || t.status === "running") continue;
+				const end = t.finishedAt || t.createdAt;
+				if (end && end < cutoff) expired.push(id);
+			}
+			for (const id of expired) {
+				const t = this.tasks.get(id);
+				this.tasks.delete(id);
+				this.removeTaskDir(id);
+				if (t) console.log(`[osdeploy] task ${id} expired after ${this.cfg.taskRetentionDays}d (auto-removed)`);
+			}
+			if (expired.length) this.save();
+		}
+		/** 删除任务目录（详细安装日志等）与迷你 ISO 残留 */
+		removeTaskDir(taskId) {
+			try {
+				const dir = this.taskDirOf(taskId);
+				if (fs.existsSync(dir)) fs.rmSync(dir, {
+					recursive: true,
+					force: true
+				});
+				const iso = path.join(this.isoDirPath(), `${taskId}.iso`);
+				if (fs.existsSync(iso)) fs.rmSync(iso, { force: true });
+				this.rpmCounts.delete(taskId);
+				for (const k of Array.from(this.repoSeen.keys())) if (k.startsWith(taskId + ":")) this.repoSeen.delete(k);
+			} catch {}
 		}
 		async listServers() {
 			try {
@@ -725,6 +896,7 @@ let OsDeployService = (() => {
 			}
 		}
 		async registerIso(req) {
+			this.ensureState();
 			try {
 				if (!req.isoPath || !fs.existsSync(req.isoPath)) return {
 					ok: false,
@@ -766,13 +938,14 @@ let OsDeployService = (() => {
 			}
 		}
 		async extractImage(req) {
+			this.ensureState();
 			const img = this.images.find((i) => i.id === req.imageId);
 			if (!img) return {
 				ok: false,
 				error: "image not found"
 			};
 			if (img.extracted && img.extractedDir) return { ok: true };
-			const outDir = path.join(this.root || os.tmpdir(), "os-deploy-repo", img.distroId);
+			const outDir = this.repoDirOf(img.distroId);
 			const result = extractIso(img.isoPath, outDir);
 			if (result.ok) {
 				img.extracted = true;
@@ -787,6 +960,7 @@ let OsDeployService = (() => {
 			};
 		}
 		async deleteImage(req) {
+			this.ensureState();
 			const idx = this.images.findIndex((i) => i.id === req.imageId);
 			if (idx < 0) return {
 				ok: false,
@@ -812,6 +986,7 @@ let OsDeployService = (() => {
 			return { ok: true };
 		}
 		async listImages() {
+			this.ensureState();
 			return { images: this.images };
 		}
 		async listComponents(req) {
@@ -870,6 +1045,7 @@ let OsDeployService = (() => {
 			}
 		}
 		async createTask(req) {
+			this.ensureState();
 			try {
 				if (!this.serverRunning) return {
 					ok: false,
@@ -918,9 +1094,11 @@ let OsDeployService = (() => {
 			}
 		}
 		async listTasks() {
+			this.ensureState();
 			return { tasks: Array.from(this.tasks.values()) };
 		}
 		async getTaskDetail(req) {
+			this.ensureState();
 			const task = this.tasks.get(req.taskId);
 			if (!task) return {
 				task: null,
@@ -929,6 +1107,7 @@ let OsDeployService = (() => {
 			return { task };
 		}
 		async cancelTask(req) {
+			this.ensureState();
 			const task = this.tasks.get(req.taskId);
 			if (!task) return {
 				ok: false,
@@ -947,6 +1126,7 @@ let OsDeployService = (() => {
 			return { ok: true };
 		}
 		async deleteTask(req) {
+			this.ensureState();
 			const task = this.tasks.get(req.taskId);
 			if (!task) return {
 				ok: false,
@@ -957,6 +1137,7 @@ let OsDeployService = (() => {
 				error: "cannot delete running task (cancel first)"
 			};
 			this.tasks.delete(req.taskId);
+			this.removeTaskDir(req.taskId);
 			this.save();
 			return { ok: true };
 		}
@@ -987,11 +1168,14 @@ let OsDeployService = (() => {
 				this.save();
 				return;
 			}
+			try {
+				fs.mkdirSync(this.taskDirOf(task.id), { recursive: true });
+			} catch {}
 			if (!img.extracted) {
 				task.status = "running";
 				task.startedAt = Date.now();
 				this.addLog(task, "info", `Extracting ISO: ${img.name}...`);
-				const outDir = path.join(this.root || process.cwd(), "os-deploy-repo", img.distroId);
+				const outDir = this.repoDirOf(img.distroId);
 				const result = extractIso(img.isoPath, outDir);
 				if (result.ok) {
 					img.extracted = true;
@@ -1034,7 +1218,7 @@ let OsDeployService = (() => {
 				repoDir: img.extractedDir || "",
 				components: task.components,
 				taskId: task.id,
-				isoOutDir: path.join(this.root || process.cwd(), "os-deploy-iso")
+				isoOutDir: this.isoDirPath()
 			};
 			const runner = new DeployRunner(spec, serverIp, HTTP_PORT, (stage, progress, log) => {
 				task.stage = stage;
@@ -1094,12 +1278,18 @@ let OsDeployService = (() => {
 			}
 		}
 		addLog(task, level, msg) {
+			const ts = Date.now();
 			task.logs.push({
-				ts: Date.now(),
+				ts,
 				level,
 				msg
 			});
 			if (task.logs.length > 2e3) task.logs.splice(0, task.logs.length - 2e3);
+			try {
+				const dir = this.taskDirOf(task.id);
+				const line = `${new Date(ts).toISOString()} [${level}] ${msg}\n`;
+				fs.appendFileSync(path.join(dir, "install.log"), line, "utf8");
+			} catch {}
 		}
 	};
 })();

@@ -166,6 +166,26 @@ interface ServiceControlResult {
   status?: ServiceStatusResult;
   error?: string;
 }
+interface OsDeployConfig {
+  /** 数据根目录：解包仓库/迷你ISO/任务目录/日志/状态文件都放这里 */
+  storageRoot: string;
+  /** 终态任务保留天数（到期自动删除任务及其目录） */
+  taskRetentionDays: number;
+}
+interface GetConfigResult {
+  config: OsDeployConfig;
+  /** 升级前的旧数据位置（提示用户可手动迁移/清理） */
+  legacyRoot: string | null;
+}
+interface SetConfigRequest {
+  storageRoot?: string;
+  taskRetentionDays?: number;
+}
+interface SetConfigResult {
+  ok: boolean;
+  config?: OsDeployConfig;
+  error?: string;
+}
 interface BrowsePathRequest {
   path?: string | null;
 }
@@ -185,4 +205,4 @@ interface BrowsePathResult {
   error?: string;
 }
 //#endregion
-export { BrowsePathRequest, BrowsePathResult, CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, DeployTask, DistroVendor, ExtractImageRequest, ExtractImageResult, FileEntry, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, InstallComponent, IsoImage, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, LogEntry, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, ServiceControlResult, ServiceStatusResult, TargetDevice, TaskStatus };
+export { BrowsePathRequest, BrowsePathResult, CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, DeployTask, DistroVendor, ExtractImageRequest, ExtractImageResult, FileEntry, GetConfigResult, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, InstallComponent, IsoImage, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, LogEntry, OsDeployConfig, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, ServiceControlResult, ServiceStatusResult, SetConfigRequest, SetConfigResult, TargetDevice, TaskStatus };

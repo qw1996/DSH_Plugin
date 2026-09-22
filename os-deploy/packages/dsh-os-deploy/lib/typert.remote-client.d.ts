@@ -3,7 +3,7 @@ import type {
   RemoteResult,
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
-import type { BrowsePathRequest, BrowsePathResult, CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, ExtractImageRequest, ExtractImageResult, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, ServiceControlResult, ServiceStatusResult } from '@qinwei/dsh-os-deploy/types'
+import type { BrowsePathRequest, BrowsePathResult, CancelTaskRequest, CancelTaskResult, CreateTaskRequest, CreateTaskResult, DeleteImageRequest, DeleteImageResult, DeleteTaskRequest, DeleteTaskResult, ExtractImageRequest, ExtractImageResult, GetConfigResult, GetServerListResult, GetTaskDetailRequest, GetTaskDetailResult, ListComponentsRequest, ListComponentsResult, ListImagesResult, ListTasksResult, ProbeDeviceRequest, ProbeDeviceResult, RegisterIsoRequest, RegisterIsoResult, ServiceControlResult, ServiceStatusResult, SetConfigRequest, SetConfigResult } from '@qinwei/dsh-os-deploy/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$6f734465706c6f79 {
@@ -13,6 +13,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     deleteImage: (req: DeleteImageRequest) => Promise<RemoteResult<DeleteImageResult>>
     deleteTask: (req: DeleteTaskRequest) => Promise<RemoteResult<DeleteTaskResult>>
     extractImage: (req: ExtractImageRequest) => Promise<RemoteResult<ExtractImageResult>>
+    getConfig: () => Promise<RemoteResult<GetConfigResult>>
     getTaskDetail: (req: GetTaskDetailRequest) => Promise<RemoteResult<GetTaskDetailResult>>
     listComponents: (req: ListComponentsRequest) => Promise<RemoteResult<ListComponentsResult>>
     listImages: () => Promise<RemoteResult<ListImagesResult>>
@@ -24,6 +25,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     serviceStart: () => Promise<RemoteResult<ServiceControlResult>>
     serviceStatus: () => Promise<RemoteResult<ServiceStatusResult>>
     serviceStop: () => Promise<RemoteResult<ServiceControlResult>>
+    setConfig: (req: SetConfigRequest) => Promise<RemoteResult<SetConfigResult>>
   }
   interface TypertRemoteMap {
     'osDeploy/browsePath': (req: BrowsePathRequest) => Promise<RemoteResult<BrowsePathResult>>
@@ -32,6 +34,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'osDeploy/deleteImage': (req: DeleteImageRequest) => Promise<RemoteResult<DeleteImageResult>>
     'osDeploy/deleteTask': (req: DeleteTaskRequest) => Promise<RemoteResult<DeleteTaskResult>>
     'osDeploy/extractImage': (req: ExtractImageRequest) => Promise<RemoteResult<ExtractImageResult>>
+    'osDeploy/getConfig': () => Promise<RemoteResult<GetConfigResult>>
     'osDeploy/getTaskDetail': (req: GetTaskDetailRequest) => Promise<RemoteResult<GetTaskDetailResult>>
     'osDeploy/listComponents': (req: ListComponentsRequest) => Promise<RemoteResult<ListComponentsResult>>
     'osDeploy/listImages': () => Promise<RemoteResult<ListImagesResult>>
@@ -43,6 +46,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'osDeploy/serviceStart': () => Promise<RemoteResult<ServiceControlResult>>
     'osDeploy/serviceStatus': () => Promise<RemoteResult<ServiceStatusResult>>
     'osDeploy/serviceStop': () => Promise<RemoteResult<ServiceControlResult>>
+    'osDeploy/setConfig': (req: SetConfigRequest) => Promise<RemoteResult<SetConfigResult>>
   }
   interface TypertRemoteNamespaceMap {
     'osDeploy': TypertRemoteNamespace$6f734465706c6f79

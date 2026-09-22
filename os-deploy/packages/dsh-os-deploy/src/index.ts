@@ -21,6 +21,7 @@ import type {
   GetServerListResult,
   ServiceStatusResult, ServiceControlResult,
   BrowsePathRequest, BrowsePathResult, FileEntry,
+  OsDeployConfig, GetConfigResult, SetConfigRequest, SetConfigResult,
 } from './types'
 import {
   RedfishClient, DeployHttpServer, DeployRunner, DeploySpec, SyslogCollector,
@@ -77,7 +78,12 @@ export default class OsDeployService extends TypertRemoteService {
   /** syslog 入任务日志的节流时间戳 */
   private lastSyslogAt = 0
   private root: string | null = null
-  private dataFile: string | null = null
+  /** 状态懒加载：DSH web 启动阶段零读盘零日志，首次实际使用才加载 */
+  private stateLoaded = false
+  /** 任务保留期清扫定时器（服务运行期间每小时一次） */
+  private sweepTimer: NodeJS.Timeout | null = null
+  private cfg: OsDeployConfig = { storageRoot: '', taskRetentionDays: 7 }
+  private cfgFile: string | null = null
   private queueRunning = false
 
   constructor(ctx: any) {
@@ -86,26 +92,106 @@ export default class OsDeployService extends TypertRemoteService {
     if (sp && typeof sp.workspaceRoot === 'string' && sp.workspaceRoot) {
       this.root = sp.workspaceRoot.replace(/[\\/]+$/, '')
     }
-    this.dataFile = this.root ? path.join(this.root, 'dsh-os-deploy-state.json') : null
-    this.load()
+    // 配置文件极小（百字节级），放 workspace 根以便定位数据根目录；
+    // 状态/任务/镜像数据全部延迟到实际使用时才读（启动零动作）。
+    this.cfgFile = this.root ? path.join(this.root, 'dsh-os-deploy-config.json') : null
+    this.loadConfig()
     // cordis Service 没有 [Service.dispose] 符号（服务随 fiber 自动注销），
     // 清理逻辑挂在 Context 的 dispose 事件上。
     ctx.on('dispose', () => {
       if (this.httpServer) this.httpServer.stop()
       if (this.syslog) this.syslog.stop()
+      if (this.sweepTimer) clearInterval(this.sweepTimer)
       for (const [, r] of this.runners) r.cancel()
     })
   }
 
-  async [Service.init]() {
-    // 轻量启动：只加载持久化状态。HTTP 仓库与任务队列由 serviceStart() 按需拉起，
-    // 保证 DSH 启动速度不受部署服务影响（默认不启动）。
-    console.log('[osdeploy] service loaded (idle) — 在面板点击「启动」后才会开启部署服务')
+  // ---------- 存储路径（全部汇聚到可配置的 storageRoot） ----------
+  private get storageRoot(): string {
+    return this.cfg.storageRoot || path.join(this.root || process.cwd(), 'osdeploy-data')
+  }
+  private repoDirOf(distroId: string) { return path.join(this.storageRoot, 'repo', distroId) }
+  private isoDirPath() { return path.join(this.storageRoot, 'iso') }
+  taskDirOf(taskId: string) { return path.join(this.storageRoot, 'tasks', taskId) }
+  private logsDirPath() { return path.join(this.storageRoot, 'logs') }
+  private statePath() { return path.join(this.storageRoot, 'state.json') }
+  /** 升级前的旧数据根（存在则提示可迁移/清理） */
+  private legacyRoot(): string | null {
+    const legacy = this.root ? path.join(this.root, 'os-deploy-repo') : null
+    return legacy && fs.existsSync(legacy) ? this.root : null
+  }
+
+  private loadConfig() {
+    if (!this.cfgFile || !fs.existsSync(this.cfgFile)) return
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.cfgFile, 'utf8'))
+      if (typeof raw.storageRoot === 'string' && raw.storageRoot) this.cfg.storageRoot = raw.storageRoot
+      if (typeof raw.taskRetentionDays === 'number' && raw.taskRetentionDays >= 0) this.cfg.taskRetentionDays = raw.taskRetentionDays
+    } catch { /* 配置损坏则用默认值 */ }
+  }
+
+  private saveConfig() {
+    if (!this.cfgFile) return
+    try { fs.writeFileSync(this.cfgFile, JSON.stringify(this.cfg, null, 2), 'utf8') } catch { /* ignore */ }
+  }
+
+  /** 状态懒加载（含旧版 state.json 迁移到 storageRoot） */
+  private ensureState() {
+    if (this.stateLoaded) return
+    this.stateLoaded = true
+    const readState = (file: string) => {
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'))
+      this.images = data.images || []
+      this.tasks = new Map()
+      for (const t of (data.tasks || [])) this.tasks.set(t.id, t)
+    }
+    try {
+      const p = this.statePath()
+      if (fs.existsSync(p)) { readState(p); return }
+      // 迁移：旧版状态在 workspace 根
+      const legacy = this.root ? path.join(this.root, 'dsh-os-deploy-state.json') : null
+      if (legacy && fs.existsSync(legacy)) {
+        readState(legacy)
+        this.save()
+        try { fs.renameSync(legacy, legacy + '.migrated') } catch { /* ignore */ }
+      }
+    } catch { /* 状态损坏则从空开始 */ }
+  }
+
+  // ---------- @Remote: 配置 ----------
+  @Remote('getConfig')
+  async getConfig(): Promise<GetConfigResult> {
+    return { config: { storageRoot: this.storageRoot, taskRetentionDays: this.cfg.taskRetentionDays }, legacyRoot: this.legacyRoot() }
+  }
+
+  @Remote('setConfig')
+  async setConfig(req: SetConfigRequest): Promise<SetConfigResult> {
+    try {
+      if (req.storageRoot !== undefined) {
+        const p = req.storageRoot.trim()
+        if (!p) return { ok: false, error: '存储路径不能为空' }
+        // 尝试创建目录验证可写性
+        fs.mkdirSync(p, { recursive: true })
+        this.cfg.storageRoot = p
+      }
+      if (req.taskRetentionDays !== undefined) {
+        const d = Math.floor(Number(req.taskRetentionDays))
+        if (!Number.isFinite(d) || d < 0 || d > 3650) return { ok: false, error: '保留天数需为 0-3650（0 = 不自动删除）' }
+        this.cfg.taskRetentionDays = d
+      }
+      this.saveConfig()
+      // 状态文件随根迁移（已加载的内存状态写到新位置）
+      if (this.stateLoaded) this.save()
+      return { ok: true, config: { storageRoot: this.storageRoot, taskRetentionDays: this.cfg.taskRetentionDays } }
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message || e) }
+    }
   }
 
   // ---------- @Remote: 服务控制 ----------
   @Remote('serviceStatus')
   async serviceStatus(): Promise<ServiceStatusResult> {
+    this.ensureState()
     return {
       running: this.serverRunning,
       port: HTTP_PORT,
@@ -121,20 +207,20 @@ export default class OsDeployService extends TypertRemoteService {
   async serviceStart(): Promise<ServiceControlResult> {
     try {
       if (this.serverRunning) return { ok: true, status: await this.serviceStatus() }
+      this.ensureState()
       this.httpServer = new DeployHttpServer(HTTP_PORT, HTTPS_PORT)
       this.httpServer.onReport((query, ip) => this.handleReport(query, ip))
       // 全路径访问观测：/iso 的 BMC 拉盘 + /repo 的安装器取包（逐包日志）
       this.isoFetchCount = 0
       this.httpServer.onAccess(({ path: p, method, status, bytes, ip }) => this.onRepoAccess(p, method, status, bytes, ip))
       // 虚拟光驱镜像目录（HTTPS /iso 根）与 TLS 证书
-      const isoDir = path.join(this.root || os.tmpdir(), 'os-deploy-iso')
-      fs.mkdirSync(isoDir, { recursive: true })
-      this.httpServer.setRoot('/iso', isoDir)
+      fs.mkdirSync(this.isoDirPath(), { recursive: true })
+      this.httpServer.setRoot('/iso', this.isoDirPath())
       const tls = this.ensureTls()
       await this.httpServer.start(tls)
       // 安装器实时日志（rd.syslog/inst.remotelog 推送，UDP+TCP 514）
-      const logDir = path.join(this.root || os.tmpdir(), 'os-deploy-logs')
-      this.syslog = new SyslogCollector(SYSLOG_PORT, path.join(logDir, 'syslog.log'))
+      fs.mkdirSync(this.logsDirPath(), { recursive: true })
+      this.syslog = new SyslogCollector(SYSLOG_PORT, path.join(this.logsDirPath(), 'syslog.log'))
       this.syslog.onLine = ({ ip, msg }) => this.onSyslogLine(ip, msg)
       try {
         await this.syslog.start()
@@ -151,7 +237,11 @@ export default class OsDeployService extends TypertRemoteService {
       }
       this.serverRunning = true
       this.serverStartedAt = Date.now()
-      console.log(`[osdeploy] HTTP server listening on 0.0.0.0:${HTTP_PORT}, HTTPS on :${HTTPS_PORT}`)
+      console.log(`[osdeploy] service started: storage=${this.storageRoot} HTTP:${HTTP_PORT} HTTPS:${HTTPS_PORT}`)
+      // 任务保留期清扫（启动时一次 + 每小时一次）
+      this.sweepExpiredTasks()
+      if (this.sweepTimer) clearInterval(this.sweepTimer)
+      this.sweepTimer = setInterval(() => this.sweepExpiredTasks(), 60 * 60 * 1000)
       // 恢复队列中排队的任务
       this.processQueue()
       return { ok: true, status: await this.serviceStatus() }
@@ -215,6 +305,10 @@ export default class OsDeployService extends TypertRemoteService {
       if (!l) return
       const task = this.runningTaskBy(ip, 'osIp')
       if (!task) return
+      // 全量原文落盘到任务目录（anaconda.log）——不受过滤/节流限制
+      try {
+        fs.appendFileSync(path.join(this.taskDirOf(task.id), 'anaconda.log'), `${new Date().toISOString()} ${l}\n`, 'utf8')
+      } catch { /* 任务目录可能尚未创建 */ }
       const notable = /error|traceback|terminate|fatal|fail|exception|storage|kickstart|payload|metadata|partition|mounting|installing|transaction|bootload|multipath|blivet|started|finished|anaconda|network|dhcp|addr|dnf|rpm/i.test(l)
       if (!notable) return
       const now = Date.now()
@@ -268,6 +362,7 @@ export default class OsDeployService extends TypertRemoteService {
       this.queueRunning = false
       if (this.httpServer) { this.httpServer.stop(); this.httpServer = null }
       if (this.syslog) { this.syslog.stop(); this.syslog = null }
+      if (this.sweepTimer) { clearInterval(this.sweepTimer); this.sweepTimer = null }
       this.serverRunning = false
       this.serverStartedAt = null
       this.rpmCounts.clear()
@@ -287,23 +382,47 @@ export default class OsDeployService extends TypertRemoteService {
   }
 
   // ---------- 持久化 ----------
-  private load() {
-    if (!this.dataFile || !fs.existsSync(this.dataFile)) return
-    try {
-      const data = JSON.parse(fs.readFileSync(this.dataFile, 'utf8'))
-      this.images = data.images || []
-      for (const t of (data.tasks || [])) this.tasks.set(t.id, t)
-    } catch (e) { console.error('[osdeploy] load state error:', e) }
-  }
-
   private save() {
-    if (!this.dataFile) return
     try {
-      fs.writeFileSync(this.dataFile, JSON.stringify({
+      fs.mkdirSync(this.storageRoot, { recursive: true })
+      fs.writeFileSync(this.statePath(), JSON.stringify({
         images: this.images,
         tasks: Array.from(this.tasks.values()),
       }, null, 2))
     } catch (e) { console.error('[osdeploy] save state error:', e) }
+  }
+
+  /** 终态任务保留期清扫：到期任务连同任务目录一起删除 */
+  private sweepExpiredTasks() {
+    if (this.cfg.taskRetentionDays <= 0) return
+    const cutoff = Date.now() - this.cfg.taskRetentionDays * 86400000
+    const expired: string[] = []
+    for (const [id, t] of this.tasks) {
+      if (t.status === 'queued' || t.status === 'running') continue
+      const end = t.finishedAt || t.createdAt
+      if (end && end < cutoff) expired.push(id)
+    }
+    for (const id of expired) {
+      const t = this.tasks.get(id)
+      this.tasks.delete(id)
+      this.removeTaskDir(id)
+      if (t) console.log(`[osdeploy] task ${id} expired after ${this.cfg.taskRetentionDays}d (auto-removed)`)
+    }
+    if (expired.length) this.save()
+  }
+
+  /** 删除任务目录（详细安装日志等）与迷你 ISO 残留 */
+  private removeTaskDir(taskId: string) {
+    try {
+      const dir = this.taskDirOf(taskId)
+      if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true })
+      const iso = path.join(this.isoDirPath(), `${taskId}.iso`)
+      if (fs.existsSync(iso)) fs.rmSync(iso, { force: true })
+      this.rpmCounts.delete(taskId)
+      for (const k of Array.from(this.repoSeen.keys())) {
+        if (k.startsWith(taskId + ':')) this.repoSeen.delete(k)
+      }
+    } catch { /* 清理失败不影响主流程 */ }
   }
 
   // ---------- @Remote: 镜像管理 ----------
@@ -383,6 +502,7 @@ export default class OsDeployService extends TypertRemoteService {
 
   @Remote('registerIso')
   async registerIso(req: RegisterIsoRequest): Promise<RegisterIsoResult> {
+    this.ensureState()
     try {
       if (!req.isoPath || !fs.existsSync(req.isoPath)) {
         return { ok: false, error: `ISO file not found: ${req.isoPath}` }
@@ -407,10 +527,11 @@ export default class OsDeployService extends TypertRemoteService {
 
   @Remote('extractImage')
   async extractImage(req: ExtractImageRequest): Promise<ExtractImageResult> {
+    this.ensureState()
     const img = this.images.find(i => i.id === req.imageId)
     if (!img) return { ok: false, error: 'image not found' }
     if (img.extracted && img.extractedDir) return { ok: true }
-    const outDir = path.join(this.root || os.tmpdir(), 'os-deploy-repo', img.distroId)
+    const outDir = this.repoDirOf(img.distroId)
     const result = extractIso(img.isoPath, outDir)
     if (result.ok) {
       img.extracted = true
@@ -425,6 +546,7 @@ export default class OsDeployService extends TypertRemoteService {
 
   @Remote('deleteImage')
   async deleteImage(req: DeleteImageRequest): Promise<DeleteImageResult> {
+    this.ensureState()
     const idx = this.images.findIndex(i => i.id === req.imageId)
     if (idx < 0) return { ok: false, error: 'image not found' }
     const img = this.images[idx]
@@ -447,6 +569,7 @@ export default class OsDeployService extends TypertRemoteService {
 
   @Remote('listImages')
   async listImages(): Promise<ListImagesResult> {
+    this.ensureState()
     return { images: this.images }
   }
 
@@ -514,6 +637,7 @@ export default class OsDeployService extends TypertRemoteService {
   // ---------- @Remote: 任务管理 ----------
   @Remote('createTask')
   async createTask(req: CreateTaskRequest): Promise<CreateTaskResult> {
+    this.ensureState()
     try {
       if (!this.serverRunning) return { ok: false, error: '部署服务未启动，请先在面板点击「启动」' }
       const img = this.images.find(i => i.id === req.imageId)
@@ -540,11 +664,13 @@ export default class OsDeployService extends TypertRemoteService {
 
   @Remote('listTasks')
   async listTasks(): Promise<ListTasksResult> {
+    this.ensureState()
     return { tasks: Array.from(this.tasks.values()) }
   }
 
   @Remote('getTaskDetail')
   async getTaskDetail(req: GetTaskDetailRequest): Promise<GetTaskDetailResult> {
+    this.ensureState()
     const task = this.tasks.get(req.taskId)
     if (!task) return { task: null, error: 'task not found' }
     return { task }
@@ -552,6 +678,7 @@ export default class OsDeployService extends TypertRemoteService {
 
   @Remote('cancelTask')
   async cancelTask(req: CancelTaskRequest): Promise<CancelTaskResult> {
+    this.ensureState()
     const task = this.tasks.get(req.taskId)
     if (!task) return { ok: false, error: 'task not found' }
     if (task.status === 'running') {
@@ -569,10 +696,13 @@ export default class OsDeployService extends TypertRemoteService {
 
   @Remote('deleteTask')
   async deleteTask(req: DeleteTaskRequest): Promise<DeleteTaskResult> {
+    this.ensureState()
     const task = this.tasks.get(req.taskId)
     if (!task) return { ok: false, error: 'task not found' }
     if (task.status === 'running') return { ok: false, error: 'cannot delete running task (cancel first)' }
     this.tasks.delete(req.taskId)
+    // 同步删除任务目录（详细安装日志）与迷你 ISO 残留
+    this.removeTaskDir(req.taskId)
     this.save()
     return { ok: true }
   }
@@ -613,13 +743,15 @@ export default class OsDeployService extends TypertRemoteService {
   private async runTask(task: DeployTask) {
     const img = this.images.find(i => i.id === task.imageId)
     if (!img) { task.status = 'failed'; task.error = 'image not found'; this.save(); return }
+    // 任务专属目录：详细安装日志（install.log + anaconda.log）落这里
+    try { fs.mkdirSync(this.taskDirOf(task.id), { recursive: true }) } catch { /* ignore */ }
 
     // Auto-extract if needed
     if (!img.extracted) {
       task.status = 'running'
       task.startedAt = Date.now()
       this.addLog(task, 'info', `Extracting ISO: ${img.name}...`)
-      const outDir = path.join(this.root || process.cwd(), 'os-deploy-repo', img.distroId)
+      const outDir = this.repoDirOf(img.distroId)
       const result = extractIso(img.isoPath, outDir)
       if (result.ok) {
         img.extracted = true
@@ -664,7 +796,7 @@ export default class OsDeployService extends TypertRemoteService {
       repoDir: img.extractedDir || '',
       components: task.components,
       taskId: task.id,
-      isoOutDir: path.join(this.root || process.cwd(), 'os-deploy-iso'),
+      isoOutDir: this.isoDirPath(),
     }
 
     const runner = new DeployRunner(spec, serverIp, HTTP_PORT, (stage, progress, log) => {
@@ -733,9 +865,16 @@ export default class OsDeployService extends TypertRemoteService {
 
   // ---------- 工具方法 ----------
   private addLog(task: DeployTask, level: string, msg: string) {
-    task.logs.push({ ts: Date.now(), level: level as any, msg })
+    const ts = Date.now()
+    task.logs.push({ ts, level: level as any, msg })
     // 逐包安装日志等详细观测需要更大容量（约 300-500 包 + syslog 事件）
     if (task.logs.length > 2000) task.logs.splice(0, task.logs.length - 2000)
+    // 同步落盘任务目录（install.log）——界面删除任务/到期自动清理时随目录删除
+    try {
+      const dir = this.taskDirOf(task.id)
+      const line = `${new Date(ts).toISOString()} [${level}] ${msg}\n`
+      fs.appendFileSync(path.join(dir, 'install.log'), line, 'utf8')
+    } catch { /* 目录未创建（旧任务）等情形忽略 */ }
   }
 }
 
