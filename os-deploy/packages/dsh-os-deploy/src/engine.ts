@@ -416,7 +416,7 @@ d-i preseed/early_command string \\
   mkdir -p /etc/apt/apt.conf.d ; \\
   printf '%s\\n' 'Acquire::AllowInsecureRepositories "true";' 'APT::Get::AllowUnauthenticated "true";' > /etc/apt/apt.conf.d/99osdeploy.conf ; \\
   sh -c "while [ ! -d /target/etc/apt/apt.conf.d ]; do sleep 2; done; cp /etc/apt/apt.conf.d/99osdeploy.conf /target/etc/apt/apt.conf.d/99osdeploy.conf" & \\
-  ( N=0; while true; do sleep 10; N=$((N+1)); SL=$( { tail -20 /var/log/syslog 2>/dev/null; tail -15 /var/log/installer.log 2>/dev/null; } | tr '\n' '|' | sed 's/ /_/g; s/&/+/g' | head -c 1400); wget -q -O /dev/null "${base}?task=${spec.taskId}&stage=syslog&d=$N|\${SL:-empty}" 2>/dev/null || true; done ) & \\
+  ( N=0; while true; do sleep 10; N=$((N+1)); SL=$( { tail -20 /var/log/syslog 2>/dev/null; tail -15 /var/log/installer.log 2>/dev/null; } | tr '\\n' '|' | sed 's/ /_/g; s/&/+/g' | head -c 1400); wget -q -O /dev/null "${base}?task=${spec.taskId}&stage=syslog&d=$N|\${SL:-empty}" 2>/dev/null || true; done ) & \\
   wget -q -O /dev/null "${base}?task=${spec.taskId}&stage=early-apt-config" || true
 
 d-i preseed/late_command string \\
@@ -487,9 +487,6 @@ export function genDebianHttpGrubCfg(spec: DeploySpec, serverIp: string, httpPor
   const mask = prefixToMask(spec.osPrefixLen)
   const kargs = [
     'auto=true', 'priority=critical',
-    // 临时诊断：d-i 挂载后落到 ttyS0 shell（纯文本，SOL 可交互），查 hinic 驱动/
-    // 链路状态。定位后移除。break=mount 在模块加载后、主菜单前。
-    'break=mount',
     `preseed/url=http://${serverIp}:${httpPort}/ks/${spec.taskId}.ks`,
     'locale=en_US.UTF-8',
     'keymap=us',
