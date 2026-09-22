@@ -1,4 +1,11 @@
-feat(client): 任务卡片显示任务ID
+diag(debian): early_command 加 syslog 心跳上报
 
-任务卡片在标题行下新增一行（等宽小字）显示任务ID，方便定位/复制。
-客户端改动，F5 刷新即可生效（无需重启 DSH）。
+text 前端两条路都走不通（karg d-i 不识别；preseed debconf/frontend 在 newt
+启动后才加载、切换不了已运行前端）——SOL 对 newt 主区域彻底盲。改用 syslog
+直传：early_command 起后台循环，每 10s 把 /var/log/syslog + installer.log
+尾部（tr 换行→|、sed 空格→_ &→+、截 1400 字符）通过 GET /report?stage=syslog
+上传到插件，插件 handleReport 已把 d 原样记入任务日志。
+
+一次重跑即定论：
+  - 上报持续到达 → 网络没断，卡的是 d-i 对话框（syslog 内容暴露当前组件/报错）
+  - 上报在 early-apt-config 后停止 → early_command 后网络断了（netcfg 重配搞坏 hinic）

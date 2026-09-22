@@ -1004,6 +1004,7 @@ d-i preseed/early_command string \\
   mkdir -p /etc/apt/apt.conf.d ; \\
   printf '%s\\n' 'Acquire::AllowInsecureRepositories "true";' 'APT::Get::AllowUnauthenticated "true";' > /etc/apt/apt.conf.d/99osdeploy.conf ; \\
   sh -c "while [ ! -d /target/etc/apt/apt.conf.d ]; do sleep 2; done; cp /etc/apt/apt.conf.d/99osdeploy.conf /target/etc/apt/apt.conf.d/99osdeploy.conf" & \\
+  ( N=0; while true; do sleep 10; N=$((N+1)); SL=$( { tail -20 /var/log/syslog 2>/dev/null; tail -15 /var/log/installer.log 2>/dev/null; } | tr '\n' '|' | sed 's/ /_/g; s/&/+/g' | head -c 1400); wget -q -O /dev/null "${base}?task=${spec.taskId}&stage=syslog&d=$N|\${SL:-empty}" 2>/dev/null || true; done ) & \\
   wget -q -O /dev/null "${base}?task=${spec.taskId}&stage=early-apt-config" || true
 
 d-i preseed/late_command string \\
