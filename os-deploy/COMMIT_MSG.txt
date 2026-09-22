@@ -1,13 +1,12 @@
-revert(debian): choose_interface 回 auto，去掉硬编码接口名字段
+fix(debian): text 前端改用 preseed debconf/frontend（karg 无效）
 
-重新确认：enp125s0f0 硬编码方案不妥（换机器/网卡即失效，正是用户指出的问题），
-且根因判断本身有误——回看 2/3 次任务 early-apt-config 均正常到达，说明 auto
-在"选网卡"这步已成功（d-i 自选首个有链路网卡、网络通、preseed 拉到）。卡顿在
-early_command 之后（choose-mirror 不发 fetch），与选网卡无关，故改接口名治不了。
+诊断 task_7aced29407b4：grub.cfg 里确实有 DEBIAN_FRONTEND=text（DSH 加载了
+新 bundle、生成了带 text 的 grub.cfg），但 d-i 仍用 newt（SOL 显示 newt 状态栏）。
+根因：DEBIAN_FRONTEND 作为内核 karg 不被 d-i 识别——d-i 不把该 karg 导出为
+环境变量；d-i 的前端由 debconf 问题 debconf/frontend 决定。
 
-netcfg 的 auto 只读链路标志、不 down/up 端口，"扫描触发 hinic 断网"假设不成立。
-
-- 撤销 nicInterface 字段（DeploySpec/TargetDevice/index/client 全部移除）
-- choose_interface 回 auto（动态探测，不写死；2/3 次已证选网卡正常）
-- 保留 DEBIAN_FRONTEND=text（通用无头串口设置）：下次重跑 d-i 对话框文本
-  按行写到 ttyS0、iBMC SOL 能抓到，据此确诊 early_command 之后卡顿的真实原因
+- 移除 genDebianHttpGrubCfg 里的 DEBIAN_FRONTEND=text karg（实测无效）
+- genPreseed 开头加 d-i debconf/frontend select text：preseed/url 在 initrd
+  早期加载（early_command 此时跑、已证），debconf-set-selections 在主菜单启动
+  前设好 debconf/frontend=text，主菜单 cdebconf 即用 text 前端——d-i 真正
+  识别的方式。下次重跑 SOL 能抓到 early_command 之后卡顿的真实对话框文本

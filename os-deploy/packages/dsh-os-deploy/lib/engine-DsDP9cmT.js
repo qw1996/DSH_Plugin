@@ -958,6 +958,7 @@ function genPreseed(spec, serverIp, httpPort) {
 		`  true`
 	]);
 	return `#### osdeploy generated preseed
+d-i debconf/frontend select text
 d-i debian-installer/locale string en_US.UTF-8
 d-i keyboard-configuration/xkb-keymap select us
 d-i console-setup/ask_detect boolean false
@@ -1066,8 +1067,7 @@ function genDebianHttpGrubCfg(spec, serverIp, httpPort) {
 		"netcfg/confirm_static=true",
 		`netcfg/get_hostname=${spec.hostname}`,
 		"console=tty0",
-		"console=ttyS0,115200n8",
-		"DEBIAN_FRONTEND=text"
+		"console=ttyS0,115200n8"
 	].join(" ");
 	return `# osdeploy generated grub.cfg — Debian HTTP boot
 set default=0

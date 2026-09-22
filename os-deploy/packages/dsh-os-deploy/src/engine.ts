@@ -370,6 +370,7 @@ export function genPreseed(spec: DeploySpec, serverIp: string, httpPort: number)
   ])
 
   return `#### osdeploy generated preseed
+d-i debconf/frontend select text
 d-i debian-installer/locale string en_US.UTF-8
 d-i keyboard-configuration/xkb-keymap select us
 d-i console-setup/ask_detect boolean false
@@ -502,11 +503,10 @@ export function genDebianHttpGrubCfg(spec: DeploySpec, serverIp: string, httpPor
     'netcfg/confirm_static=true',
     `netcfg/get_hostname=${spec.hostname}`,
     'console=tty0', 'console=ttyS0,115200n8',
-    // 串口/无头环境用 text 前端（Debian 安装手册推荐）：d-i 把对话框
-    // 文本按行写到 ttyS0，iBMC SOL 能抓到（newt 是静态 curses、iBMC 只发
-    // 状态栏增量、主区域对话框永远抓不到 → 9/22 故障二盲抓 25 分钟）。
-    // text 前端与 newt 在 auto 模式下行为等价，不影响安装流程。
-    'DEBIAN_FRONTEND=text',
+    // 注意：text 前端不能在这里用 DEBIAN_FRONTEND=text karg——d-i 不把
+    // 该 karg 导出为环境变量，实测 d-i 仍用 newt（9/22 task_7aced29407b4
+    // grub.cfg 含此 karg 但 SOL 仍显示 newt 状态栏）。改用 preseed
+    // d-i debconf/frontend select text（见 genPreseed）才被 d-i 识别。
   ].join(' ')
   return `# osdeploy generated grub.cfg — Debian HTTP boot
 set default=0
