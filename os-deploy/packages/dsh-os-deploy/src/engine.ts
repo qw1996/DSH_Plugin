@@ -30,13 +30,6 @@ export interface BmcInfo {
 export interface DeploySpec {
   bmc: BmcInfo
   nicMac: string
-  /** 目标网卡接口名（如 enp125s0f0）——Debian grub kargs 的
-   *  netcfg/choose_interface 用接口名（非 MAC、非 auto）：
-   *  auto 会让 netcfg 扫描全部端口找链路，Hi1822 四端口扫描时 down/up
-   *  易触发 hinic 驱动问题导致网络断、choose-mirror fetch 失败卡死
-   *  （9/22 故障）；显式接口名让 netcfg 直连该口、不扫描，网络保持
-   *  通畅（原工具实证）。空则回退 auto。 */
-  nicInterface?: string
   hostname: string
   osIp: string
   osGateway: string
@@ -496,12 +489,11 @@ export function genDebianHttpGrubCfg(spec: DeploySpec, serverIp: string, httpPor
     'locale=en_US.UTF-8',
     'keymap=us',
     'netcfg/disable_autoconfig=true',
-    // choose_interface=接口名（enp125s0f0 等）或 auto。传 MAC（d-i netcfg
-    // 不接受 MAC、只认接口名或 auto）会卡在"选择网卡"→ preseed 永远拉不到
-    // （9/22 故障一）；用 auto 会让 netcfg 扫描全部端口、Hi1822 四端口
-    // down/up 触发 hinic 问题导致网络断、choose-mirror 卡死（9/22 故障二）。
-    // 显式接口名（原工具实证）让 netcfg 直连该口、不扫描，网络保持通畅。
-    `netcfg/choose_interface=${spec.nicInterface || 'auto'}`,
+    // choose_interface=auto：d-i 选首个有链路的网卡（动态探测，不写死接口名）。
+    // 本机仅 enp125s0f0 接线，2/3 次任务 early-apt-config 均正常到达，证明
+    // auto 选网卡+网络正常。卡顿在 early_command 之后（choose-mirror 不 fetch），
+    // 与选网卡无关——故不在此处硬编码接口名（换机器即失效）。
+    'netcfg/choose_interface=auto',
     'netcfg/link_wait_timeout=15',
     `netcfg/get_ipaddress=${spec.osIp}`,
     `netcfg/get_netmask=${mask}`,

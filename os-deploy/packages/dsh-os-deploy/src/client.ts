@@ -178,7 +178,7 @@ export async function apply(ctx: any) {
       imageId: '', vendor: '', components: ['core'],
       // Manual device input
       bmcHost: '', bmcUser: 'Administrator', bmcPassword: '',
-      nicMac: '', nicInterface: '', hostname: '', osIp: '', osGateway: '', osPrefixLen: '24',
+      nicMac: '', hostname: '', osIp: '', osGateway: '', osPrefixLen: '24',
       osDns: '114.114.114.114', rootPassword: '', diskSn: '', diskCapacityBytes: 0,
       // From server-manager
       useServerManager: false, selectedServerIds: [] as string[],
@@ -331,7 +331,7 @@ export async function apply(ctx: any) {
             devices.push({
               id: srv.id, bmcHost: srv.bmcHost || form.bmcHost,
               bmcUser: srv.bmcUser || form.bmcUser, bmcPassword: form.bmcPassword,
-              nicMac: form.nicMac, nicInterface: form.nicInterface, hostname: form.hostname || srv.name,
+              nicMac: form.nicMac, hostname: form.hostname || srv.name,
               osIp: form.osIp, osGateway: form.osGateway, osPrefixLen: parseInt(form.osPrefixLen) || 24,
               osDns: form.osDns.split(',').map((s: string) => s.trim()).filter(Boolean),
               rootPassword: form.rootPassword, diskSn: form.diskSn,
@@ -344,7 +344,7 @@ export async function apply(ctx: any) {
           devices.push({
             id: 'manual_' + Date.now(), bmcHost: form.bmcHost,
             bmcUser: form.bmcUser, bmcPassword: form.bmcPassword,
-            nicMac: form.nicMac, nicInterface: form.nicInterface, hostname: form.hostname,
+            nicMac: form.nicMac, hostname: form.hostname,
             osIp: form.osIp, osGateway: form.osGateway, osPrefixLen: parseInt(form.osPrefixLen) || 24,
             osDns: form.osDns.split(',').map((s: string) => s.trim()).filter(Boolean),
             rootPassword: form.rootPassword, diskSn: form.diskSn,
@@ -619,7 +619,6 @@ export async function apply(ctx: any) {
           ),
           h('div', { className: 'osd-row' },
             field('业务网卡 MAC', form.nicMac, setF('nicMac'), 'aa:bb:cc:dd:ee:ff'),
-            field('网卡接口名', form.nicInterface, setF('nicInterface'), 'enp125s0f0（留空=auto，但 auto 易触发 Hi1822 扫描断网，建议填接口名）'),
           ),
           h('div', { className: 'osd-meta' }, form.diskSn
             ? `目标磁盘 SN: ${form.diskSn} —— 安装会清空该盘上的所有数据！`

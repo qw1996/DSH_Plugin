@@ -1057,7 +1057,7 @@ function genDebianHttpGrubCfg(spec, serverIp, httpPort) {
 		"locale=en_US.UTF-8",
 		"keymap=us",
 		"netcfg/disable_autoconfig=true",
-		`netcfg/choose_interface=${spec.nicInterface || "auto"}`,
+		"netcfg/choose_interface=auto",
 		"netcfg/link_wait_timeout=15",
 		`netcfg/get_ipaddress=${spec.osIp}`,
 		`netcfg/get_netmask=${mask}`,
