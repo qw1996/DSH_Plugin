@@ -729,8 +729,8 @@ export async function apply(ctx: any) {
 
   /**
    * 侧边栏图标（服务器机架）：与官方 primitives 图标同构——16×16 viewBox
-   * 设计稿、图形撑满画布、currentColor 描边。（24×24 基准 + 图形不满幅时
-   * 缩到 16/18px 视觉上会偏小一圈，与相邻图标"不对齐"。）
+   * 设计稿、图形撑满画布、currentColor 描边。内部元素跨距精确以画布中心
+   * x=8 对称（圆点左缘 3.5 ↔ 线右缘 12.5），避免视觉重心偏移。
    */
   function SidebarIcon(props: { size: number; active: boolean }) {
     const s = props.size || 16
@@ -742,9 +742,9 @@ export async function apply(ctx: any) {
       h('rect', { x: 1.5, y: 1.8, width: 13, height: 5.2, rx: 1.2, stroke: 'currentColor', strokeWidth: 1.3 }),
       h('rect', { x: 1.5, y: 9, width: 13, height: 5.2, rx: 1.2, stroke: 'currentColor', strokeWidth: 1.3 }),
       h('path', { d: 'M8 7v2', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' }),
-      h('circle', { cx: 4, cy: 4.4, r: 0.75, fill: 'currentColor' }),
-      h('circle', { cx: 4, cy: 11.6, r: 0.75, fill: 'currentColor' }),
-      h('path', { d: 'M6.8 4.4h4.6M6.8 11.6h4.6', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' }),
+      h('circle', { cx: 4.25, cy: 4.4, r: 0.75, fill: 'currentColor' }),
+      h('circle', { cx: 4.25, cy: 11.6, r: 0.75, fill: 'currentColor' }),
+      h('path', { d: 'M7 4.4h5.5M7 11.6h5.5', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' }),
     )
   }
 
