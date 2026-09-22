@@ -242,20 +242,41 @@ exec >/tmp/osdeploy-pre.log 2>&1
 set -x
 __R() { curl -s -m 8 -G --data-urlencode "m=deploy" --data-urlencode "task=${spec.taskId}" --data-urlencode "stage=$1" --data-urlencode "d=$2" "http://${serverIp}:${httpPort}/report" >/dev/null 2>&1 || true; }
 __R pre-start
-TARGET_SN="${spec.diskSn}"
+# SN 归一化：去所有空白 + 统一大写（BMC Redfish 与 lsblk/vpd_pg80 的
+# 序列号格式可能不同：填充空格、大小写、厂商前缀）
+__N() { echo "$1" | tr -d ' \\t\\r\\n' | tr 'a-z' 'A-Z'; }
+TARGET_SN="$(__N '${spec.diskSn}')"
 TARGET=""
+DISKLIST=""
 for d in $(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}'); do
-  sn=$(lsblk -dn -o SERIAL /dev/$d 2>/dev/null | tr -d ' ')
-  if [ -n "$TARGET_SN" ] && [ "$sn" = "$TARGET_SN" ]; then TARGET="$d"; fi
+  sn="$(__N "$(lsblk -dn -o SERIAL /dev/$d 2>/dev/null)")"
+  # lsblk SERIAL 为空/异常时读 SCSI VPD0x80（厂商 SN 所在页）
+  if [ -z "$sn" ] || [ "$sn" = "0" ]; then
+    sn="$(__N "$(cat /sys/block/$d/device/vpd_pg80 2>/dev/null | tr -d '\\0')")"
+  fi
+  DISKLIST="$DISKLIST$d:$sn; "
+  # 双向包含比对：容忍 padding/前缀差异（SN 均 ≥10 字符，误包含风险极低）
+  if [ -n "$TARGET_SN" ] && [ -n "$sn" ]; then
+    case "$sn" in *"$TARGET_SN"*) TARGET="$d" ;; esac
+    if [ -z "$TARGET" ]; then
+      case "$TARGET_SN" in *"$sn"*) TARGET="$d" ;; esac
+    fi
+  fi
 done
-# 未指定磁盘 SN（或未匹配到）→ 自动选第一块盘（单盘服务器常规形态）
+__R disks "target='' sn=$TARGET_SN all=$DISKLIST"
 if [ -z "$TARGET" ]; then
-  TARGET=$(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}' | head -n1)
-  [ -n "$TARGET" ] && __R disk-autopick "$TARGET sn=$(lsblk -dn -o SERIAL /dev/$TARGET 2>/dev/null)"
+  if [ -z "$TARGET_SN" ]; then
+    # 未指定磁盘 → 自动选第一块盘（单盘服务器常规形态）
+    TARGET=$(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}' | head -n1)
+    [ -n "$TARGET" ] && __R disk-autopick "$TARGET"
+  else
+    # 指定了磁盘但未匹配 → 必须中止（绝不能静默装到别的盘上！）
+    __R fatal "disk SN $TARGET_SN not found in: $DISKLIST"
+    sleep 5
+    exit 1
+  fi
 fi
-__R disks "target=$TARGET sn=$TARGET_SN"
-if [ -z "$TARGET" ]; then __R fatal "no usable disk found"; sleep 5; exit 1; fi
-__R disk-resolved "$TARGET"
+__R disk-resolved "$TARGET ($DISKLIST)"
 cat > /tmp/osdeploy-disk.ks <<KSEOF
 ignoredisk --only-use=$TARGET
 clearpart --all --initlabel --disklabel=gpt
