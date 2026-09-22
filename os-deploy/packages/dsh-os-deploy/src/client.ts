@@ -727,21 +727,24 @@ export async function apply(ctx: any) {
     }
   }
 
-  /** 侧边栏图标（服务器/部署）：继承 currentColor，随主题与激活态变化。 */
+  /**
+   * 侧边栏图标（服务器机架）：与官方 primitives 图标同构——16×16 viewBox
+   * 设计稿、图形撑满画布、currentColor 描边。（24×24 基准 + 图形不满幅时
+   * 缩到 16/18px 视觉上会偏小一圈，与相邻图标"不对齐"。）
+   */
   function SidebarIcon(props: { size: number; active: boolean }) {
-    const s = props.size || 18
+    const s = props.size || 16
     return h('svg', {
-      width: s, height: s, viewBox: '0 0 24 24', fill: 'none',
-      stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round',
+      width: s, height: s, viewBox: '0 0 16 16',
+      fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
       'aria-hidden': 'true',
     },
-      h('rect', { x: 3, y: 3.5, width: 18, height: 7, rx: 1.5 }),
-      h('rect', { x: 3, y: 13.5, width: 18, height: 7, rx: 1.5 }),
-      h('circle', { cx: 6.8, cy: 7, r: 0.9, fill: 'currentColor', stroke: 'none' }),
-      h('circle', { cx: 6.8, cy: 17, r: 0.9, fill: 'currentColor', stroke: 'none' }),
-      h('path', { d: 'M11.5 7h6' }),
-      h('path', { d: 'M11.5 17h6' }),
-      h('path', { d: 'M12 10.5v3' }),
+      h('rect', { x: 1.5, y: 1.8, width: 13, height: 5.2, rx: 1.2, stroke: 'currentColor', strokeWidth: 1.3 }),
+      h('rect', { x: 1.5, y: 9, width: 13, height: 5.2, rx: 1.2, stroke: 'currentColor', strokeWidth: 1.3 }),
+      h('path', { d: 'M8 7v2', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' }),
+      h('circle', { cx: 4, cy: 4.4, r: 0.75, fill: 'currentColor' }),
+      h('circle', { cx: 4, cy: 11.6, r: 0.75, fill: 'currentColor' }),
+      h('path', { d: 'M6.8 4.4h4.6M6.8 11.6h4.6', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' }),
     )
   }
 
@@ -759,6 +762,6 @@ export async function apply(ctx: any) {
   ))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register(
     { name: 'sidebar.panellist', id: 'os-deploy', order: 0, label: 'OS 部署' },
-    (props: any) => h(SidebarIcon, { size: props?.size || 18, active: !!props?.active }),
+    (props: any) => h(SidebarIcon, { size: props?.size || 16, active: !!props?.active }),
   ))
 }
