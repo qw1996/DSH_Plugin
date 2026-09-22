@@ -51,6 +51,16 @@ declare function buildMiniIso(o: MiniIsoOpts): Promise<{
   size: number;
   bootImageSize: number;
 }>;
+/** Debian HTTP 引导迷你 ISO（~4MB）：仅 grub(grub.cfg)，kernel/initrd 由 grub 经 HTTP 拉取。 */
+declare function buildDebianHttpIso(o: {
+  repoDir: string;
+  label: string;
+  grubCfg: string;
+  out: string;
+  grubBootImage?: Buffer;
+}): Promise<{
+  size: number;
+}>;
 //#endregion
 //#region src/certs.d.ts
 declare const DEFAULT_TLS_CERT = "-----BEGIN CERTIFICATE-----\nMIIDMzCCAhugAwIBAgIUPI2wSOXPiZA31mvAZXAvgn728WowDQYJKoZIhvcNAQEL\nBQAwEzERMA8GA1UEAwwIb3NkZXBsb3kwHhcNMjYwOTE3MDM1NzMwWhcNMzYwOTE0\nMDM1NzMwWjATMREwDwYDVQQDDAhvc2RlcGxveTCCASIwDQYJKoZIhvcNAQEBBQAD\nggEPADCCAQoCggEBALUCENvXntt5mMIZ4g7BpDCOQo4fhGi+lHQJbEukp1L2mWVr\n9XoY3cyxF+GuPRAEKQKYgYRu/82HJrw+d27I7cjesamsShPBTq6K2bB9QhTK9eOd\neNsHQlPda2UTyi7PcP0hq+wH17Rhk5Mmb3W0MmPGYTH2L3SSf8yLeJMqvc+FWwIb\nQVlojUpPIV6xWAf4HkwKNaymoOic/z+ecjeG1aboncISvK+AJWrK5anmSE15IIqd\nNIbxk5stIFQxv8rdFg165in19Zzby5v/onbguaW7jzYqjx76sXkN5TqlMZSdgDns\nAzuGYwJlXaYfDHBQvE3VKmACxNzE4i3zNSf5GbcCAwEAAaN/MH0wHQYDVR0OBBYE\nFHmhdGtFnvfm0wXezJcfvLdsBx+8MB8GA1UdIwQYMBaAFHmhdGtFnvfm0wXezJcf\nvLdsBx+8MA8GA1UdEwEB/wQFMAMBAf8wKgYDVR0RBCMwIYcEwKgCiYIIb3NkZXBs\nb3mCCWxvY2FsaG9zdIcEfwAAATANBgkqhkiG9w0BAQsFAAOCAQEAF+sx6xbSJkXe\nXfBkfWXdR6KdnBHJXq+EKOWl1pV0rS3MPlhwI3e9i/WYSEC0oiWjI1ZMHQ+44EL6\nu+k64ICtdnlRtde/L5riamxVliW8OKeLlTFWzhmI04lLw17rw4SBQP4wMJSyolAE\nIRD1P8X/lKQA8n6zSY/W/lgjnVnZoHxa2I7iYimB6+UgJORyHDvFCpL1RcPxfoSO\nYgFxf5cZBE6GE5bcytaTqtT0NoIUpA32EDUMgGb/xYPlZYxabWhT5zy2u8XF/JbC\nDoC2RTlSu/L54EdBiB6EqpIKoAe9NzsIKAubn1O6sKnQNDlNI5Ch8Rdlz9J79vqN\nzc2vju5ieA==\n-----END CERTIFICATE-----\n";
@@ -82,6 +92,11 @@ interface DeploySpec {
   components: string[];
   taskId: string;
   isoOutDir: string;
+  /** preseed 输出目录（Debian：/ks HTTP 根） */
+  ksDir?: string;
+  /** Debian 引导镜像来源：任一已解包 anaconda 系镜像的 efiboot.img 路径
+   *  （Debian 自家 grub 未编译 http/efinet 模块，须借用 openEuler/麒麟的） */
+  efiBootSrc?: string;
 }
 interface ProgressCallback {
   (stage: string, progress: number, log?: string): void;
@@ -211,6 +226,15 @@ declare function extractIso(isoPath: string, outDir: string): {
   ok: boolean;
   error?: string;
 };
+/**
+ * Debian 仓库资产规范化（幂等）：Debian 媒体的安装器内核在 install.a64/ 下，
+ * grub HTTP 引导引用的是仓库根的 netboot-kernel / netboot-initrd.gz——
+ * 缺则从 install.a64 拷贝（原 osdeploy 工具实证布局）。
+ */
+declare function ensureDebianRepoAssets(repoDir: string): {
+  ok: boolean;
+  error?: string;
+};
 declare class DeployRunner {
   private rf;
   private spec;
@@ -242,4 +266,4 @@ declare class DeployRunner {
  */
 declare function getRouteIp(target: string): Promise<string>;
 //#endregion
-export { BmcInfo, DEFAULT_TLS_CERT, DEFAULT_TLS_KEY, DeployHttpServer, DeployRunner, DeploySpec, EngineConfig, FatImage, ProgressCallback, RedfishClient, SyslogCollector, buildMiniIso, extractIso, genDebianHttpGrubCfg, genKickstart, genPreseed, genVmediaGrubCfg, generateSelfSignedCert, getRouteIp, patchFatFile };
+export { BmcInfo, DEFAULT_TLS_CERT, DEFAULT_TLS_KEY, DeployHttpServer, DeployRunner, DeploySpec, EngineConfig, FatImage, ProgressCallback, RedfishClient, SyslogCollector, buildDebianHttpIso, buildMiniIso, ensureDebianRepoAssets, extractIso, genDebianHttpGrubCfg, genKickstart, genPreseed, genVmediaGrubCfg, generateSelfSignedCert, getRouteIp, patchFatFile };

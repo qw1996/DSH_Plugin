@@ -10,9 +10,9 @@ import * as crypto from 'crypto'
 import * as os from 'os'
 import * as net from 'net'
 import * as dgram from 'dgram'
-import { buildMiniIso } from './miniiso'
+import { buildMiniIso, buildDebianHttpIso } from './miniiso'
 // 重导出：lib/engine.js 作为独立入口供测试/调试直接使用
-export { buildMiniIso, FatImage, patchFatFile } from './miniiso'
+export { buildMiniIso, buildDebianHttpIso, FatImage, patchFatFile } from './miniiso'
 export { DEFAULT_TLS_CERT, DEFAULT_TLS_KEY } from './certs'
 
 // ---------- Types ----------
@@ -43,6 +43,11 @@ export interface DeploySpec {
   components: string[]       // package groups / explicit packages
   taskId: string             // 用于迷你 ISO 命名与挂载校验
   isoOutDir: string          // 迷你 ISO 输出目录（HTTPS /iso 根）
+  /** preseed 输出目录（Debian：/ks HTTP 根） */
+  ksDir?: string
+  /** Debian 引导镜像来源：任一已解包 anaconda 系镜像的 efiboot.img 路径
+   *  （Debian 自家 grub 未编译 http/efinet 模块，须借用 openEuler/麒麟的） */
+  efiBootSrc?: string
 }
 
 export interface ProgressCallback {
@@ -460,8 +465,8 @@ set default=0
 set timeout=5
 menuentry 'osdeploy ${spec.distroId} (${spec.hostname || spec.osIp})' --class gnu-linux {
   net_add_addr e0 efinet0 ${spec.osIp}
-  linux (http,${serverIp}:${httpPort})/repo/${spec.distroId}/netboot/netboot-kernel ${kargs}
-  initrd (http,${serverIp}:${httpPort})/repo/${spec.distroId}/netboot/netboot-initrd.gz
+  linux (http,${serverIp}:${httpPort})/repo/${spec.distroId}/netboot-kernel ${kargs}
+  initrd (http,${serverIp}:${httpPort})/repo/${spec.distroId}/netboot-initrd.gz
 }
 `
 }
@@ -711,6 +716,28 @@ export function extractIso(isoPath: string, outDir: string): { ok: boolean; erro
   }
 }
 
+/**
+ * Debian 仓库资产规范化（幂等）：Debian 媒体的安装器内核在 install.a64/ 下，
+ * grub HTTP 引导引用的是仓库根的 netboot-kernel / netboot-initrd.gz——
+ * 缺则从 install.a64 拷贝（原 osdeploy 工具实证布局）。
+ */
+export function ensureDebianRepoAssets(repoDir: string): { ok: boolean; error?: string } {
+  try {
+    const pairs: Array<[string, string]> = [
+      [path.join(repoDir, 'install.a64', 'vmlinuz'), path.join(repoDir, 'netboot-kernel')],
+      [path.join(repoDir, 'install.a64', 'initrd.gz'), path.join(repoDir, 'netboot-initrd.gz')],
+    ]
+    for (const [src, dst] of pairs) {
+      if (fs.existsSync(dst)) continue
+      if (!fs.existsSync(src)) return { ok: false, error: `missing installer asset: ${src}（该镜像可能不是标准 Debian arm64 安装介质）` }
+      fs.copyFileSync(src, dst)
+    }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) }
+  }
+}
+
 // ---------- Deployment Orchestrator ----------
 export class DeployRunner {
   private rf: RedfishClient
@@ -756,23 +783,48 @@ export class DeployRunner {
       // Phase 2/3: 构建每机迷你启动 ISO 并挂载为虚拟光驱
       // iBMC 的 VmmControl 只接受 https:// 镜像 URL（http 报
       // FileTransferProtocolMismatch）。不能挂完整 DVD（17GB），构建迷你
-      // 启动盘。两种模式（原 osdeploy 工具实证）：
+      // 启动盘。三种形态（原 osdeploy 工具实证）：
       //  - full：kernel+initrd+ks+stage2 都在光盘（openEuler ~810MB 验证可行）
       //  - slim：光盘只放 kernel+initrd+ks（~70MB），stage2 与软件包走
       //    HTTP 仓库（麒麟验证可行——982MB 的 full 光盘其虚拟光驱引导链路
       //    撑不住：内核起不来，固件回落旧盘启动，被旧系统 SSH 误判成功）
+      //  - debian：~4MB 纯引导盘——grub（借用 anaconda 系镜像的 efiboot.img，
+      //    Debian 自家 grub 未编译 http/efinet 模块）经自身网络栈从 HTTP
+      //    拉 kernel/initrd/preseed，安装包同样走 HTTP 仓库
+      const isDebian = this.spec.vendor === 'debian'
       const slim = this.spec.vendor === 'kylin'
-      this.progress('building', 8, `Building per-machine mini boot ISO [${slim ? 'slim' : 'full'}]...`)
       const isoLabel = ('OSDEPLOY_' + this.spec.taskId).toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 32)
       const isoOut = path.join(this.spec.isoOutDir, `${this.spec.taskId}.iso`)
-      const ks = genKickstart(this.spec, this.serverIp, this.httpPort)
-      const grub = genVmediaGrubCfg(this.spec, isoLabel, { slim, serverIp: this.serverIp, httpPort: this.httpPort })
-      const binfo = await buildMiniIso({
-        repoDir: this.spec.repoDir, label: isoLabel, ks, grubCfg: grub,
-        grubCfgPath: '/EFI/BOOT/GRUB.CFG', out: isoOut, slim,
-      })
-      const isoMB = Math.round(binfo.size / 1048576)
-      this.progress('building', 11, `Mini boot ISO ready: ${isoOut} (${isoMB}MB, boot image ${(binfo.bootImageSize / 1048576).toFixed(1)}MB)`)
+      this.progress('building', 8, `Building per-machine mini boot ISO [${isDebian ? 'debian-http' : slim ? 'slim' : 'full'}]...`)
+
+      if (isDebian) {
+        // Debian 分支：资产规范化 + preseed 落盘（/ks HTTP 根）+ HTTP-boot 迷你 ISO
+        const assets = ensureDebianRepoAssets(this.spec.repoDir)
+        if (!assets.ok) throw new Error(assets.error)
+        if (!this.spec.efiBootSrc || !fs.existsSync(this.spec.efiBootSrc)) {
+          throw new Error('Debian 部署需要一个已解包的 openEuler 或麒麟镜像（借用其 grub 引导镜像，Debian 自家 grub 缺少 http 模块）。请先注册并解包任一 anaconda 系镜像。')
+        }
+        if (!this.spec.ksDir) throw new Error('ksDir 未配置')
+        fs.mkdirSync(this.spec.ksDir, { recursive: true })
+        const preseed = genPreseed(this.spec, this.serverIp, this.httpPort)
+        fs.writeFileSync(path.join(this.spec.ksDir, `${this.spec.taskId}.ks`), preseed, 'utf8')
+        const grubD = genDebianHttpGrubCfg(this.spec, this.serverIp, this.httpPort)
+        const binfoD = await buildDebianHttpIso({
+          repoDir: this.spec.repoDir, label: isoLabel, grubCfg: grubD, out: isoOut,
+          grubBootImage: fs.readFileSync(this.spec.efiBootSrc),
+        })
+        const isoMBD = Math.round(binfoD.size / 1048576)
+        this.progress('building', 11, `Debian HTTP-boot mini ISO ready: ${isoOut} (${isoMBD}MB)`)
+      } else {
+        const ks = genKickstart(this.spec, this.serverIp, this.httpPort)
+        const grub = genVmediaGrubCfg(this.spec, isoLabel, { slim, serverIp: this.serverIp, httpPort: this.httpPort })
+        const binfo = await buildMiniIso({
+          repoDir: this.spec.repoDir, label: isoLabel, ks, grubCfg: grub,
+          grubCfgPath: '/EFI/BOOT/GRUB.CFG', out: isoOut, slim,
+        })
+        const isoMB = Math.round(binfo.size / 1048576)
+        this.progress('building', 11, `Mini boot ISO ready: ${isoOut} (${isoMB}MB, boot image ${(binfo.bootImageSize / 1048576).toFixed(1)}MB)`)
+      }
 
       this.progress('mounting', 12, 'Mounting virtual CD...')
       const imageUrl = `https://${this.serverIp}/iso/${this.spec.taskId}.iso`
@@ -790,6 +842,7 @@ export class DeployRunner {
 
       // iBMC 挂载是异步任务（BMC 下载镜像）——轮询直到 Inserted 且镜像匹配。
       // 超时按镜像尺寸放宽：BMC 侧下载 ~800MB 需数分钟。
+      const isoMB = Math.max(1, Math.round((fs.existsSync(isoOut) ? fs.statSync(isoOut).size : 0) / 1048576))
       const mountTimeoutMs = isoMB <= 400 ? 240000 : 600000
       let inserted = false
       const t0 = Date.now()

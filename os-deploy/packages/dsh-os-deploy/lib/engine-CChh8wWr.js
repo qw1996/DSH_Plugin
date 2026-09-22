@@ -567,6 +567,23 @@ async function buildMiniIso(o) {
 		bootImageSize: bootImage.length
 	};
 }
+/** Debian HTTP 引导迷你 ISO（~4MB）：仅 grub(grub.cfg)，kernel/initrd 由 grub 经 HTTP 拉取。 */
+async function buildDebianHttpIso(o) {
+	const bootImage = o.grubBootImage ? patchFatFile(o.grubBootImage, "/EFI/BOOT/GRUB.CFG", Buffer.from(o.grubCfg, "utf8")) : fs.readFileSync(path.join(o.repoDir, "images", "efiboot.img"));
+	const files = [{
+		path: "/.disk/info",
+		data: Buffer.from(`osdeploy mini disc for ${o.label}\n`, "utf8")
+	}, {
+		path: "/EFI/BOOT/grub.cfg",
+		data: Buffer.from(o.grubCfg, "utf8")
+	}];
+	return { size: (await buildIso({
+		label: o.label,
+		files,
+		bootImage,
+		out: o.out
+	})).size };
+}
 //#endregion
 //#region src/certs.ts
 const DEFAULT_TLS_CERT = `-----BEGIN CERTIFICATE-----
@@ -1025,8 +1042,8 @@ set default=0
 set timeout=5
 menuentry 'osdeploy ${spec.distroId} (${spec.hostname || spec.osIp})' --class gnu-linux {
   net_add_addr e0 efinet0 ${spec.osIp}
-  linux (http,${serverIp}:${httpPort})/repo/${spec.distroId}/netboot/netboot-kernel ${kargs}
-  initrd (http,${serverIp}:${httpPort})/repo/${spec.distroId}/netboot/netboot-initrd.gz
+  linux (http,${serverIp}:${httpPort})/repo/${spec.distroId}/netboot-kernel ${kargs}
+  initrd (http,${serverIp}:${httpPort})/repo/${spec.distroId}/netboot-initrd.gz
 }
 `;
 }
@@ -1309,6 +1326,30 @@ function extractIso(isoPath, outDir) {
 		};
 	}
 }
+/**
+* Debian 仓库资产规范化（幂等）：Debian 媒体的安装器内核在 install.a64/ 下，
+* grub HTTP 引导引用的是仓库根的 netboot-kernel / netboot-initrd.gz——
+* 缺则从 install.a64 拷贝（原 osdeploy 工具实证布局）。
+*/
+function ensureDebianRepoAssets(repoDir) {
+	try {
+		const pairs = [[path.join(repoDir, "install.a64", "vmlinuz"), path.join(repoDir, "netboot-kernel")], [path.join(repoDir, "install.a64", "initrd.gz"), path.join(repoDir, "netboot-initrd.gz")]];
+		for (const [src, dst] of pairs) {
+			if (fs.existsSync(dst)) continue;
+			if (!fs.existsSync(src)) return {
+				ok: false,
+				error: `missing installer asset: ${src}（该镜像可能不是标准 Debian arm64 安装介质）`
+			};
+			fs.copyFileSync(src, dst);
+		}
+		return { ok: true };
+	} catch (e) {
+		return {
+			ok: false,
+			error: String(e?.message || e)
+		};
+	}
+}
 var DeployRunner = class {
 	rf;
 	spec;
@@ -1348,27 +1389,48 @@ var DeployRunner = class {
 				ok: false,
 				error: "cancelled"
 			};
+			const isDebian = this.spec.vendor === "debian";
 			const slim = this.spec.vendor === "kylin";
-			this.progress("building", 8, `Building per-machine mini boot ISO [${slim ? "slim" : "full"}]...`);
 			const isoLabel = ("OSDEPLOY_" + this.spec.taskId).toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 32);
 			const isoOut = path.join(this.spec.isoOutDir, `${this.spec.taskId}.iso`);
-			const ks = genKickstart(this.spec, this.serverIp, this.httpPort);
-			const grub = genVmediaGrubCfg(this.spec, isoLabel, {
-				slim,
-				serverIp: this.serverIp,
-				httpPort: this.httpPort
-			});
-			const binfo = await buildMiniIso({
-				repoDir: this.spec.repoDir,
-				label: isoLabel,
-				ks,
-				grubCfg: grub,
-				grubCfgPath: "/EFI/BOOT/GRUB.CFG",
-				out: isoOut,
-				slim
-			});
-			const isoMB = Math.round(binfo.size / 1048576);
-			this.progress("building", 11, `Mini boot ISO ready: ${isoOut} (${isoMB}MB, boot image ${(binfo.bootImageSize / 1048576).toFixed(1)}MB)`);
+			this.progress("building", 8, `Building per-machine mini boot ISO [${isDebian ? "debian-http" : slim ? "slim" : "full"}]...`);
+			if (isDebian) {
+				const assets = ensureDebianRepoAssets(this.spec.repoDir);
+				if (!assets.ok) throw new Error(assets.error);
+				if (!this.spec.efiBootSrc || !fs.existsSync(this.spec.efiBootSrc)) throw new Error("Debian 部署需要一个已解包的 openEuler 或麒麟镜像（借用其 grub 引导镜像，Debian 自家 grub 缺少 http 模块）。请先注册并解包任一 anaconda 系镜像。");
+				if (!this.spec.ksDir) throw new Error("ksDir 未配置");
+				fs.mkdirSync(this.spec.ksDir, { recursive: true });
+				const preseed = genPreseed(this.spec, this.serverIp, this.httpPort);
+				fs.writeFileSync(path.join(this.spec.ksDir, `${this.spec.taskId}.ks`), preseed, "utf8");
+				const grubD = genDebianHttpGrubCfg(this.spec, this.serverIp, this.httpPort);
+				const binfoD = await buildDebianHttpIso({
+					repoDir: this.spec.repoDir,
+					label: isoLabel,
+					grubCfg: grubD,
+					out: isoOut,
+					grubBootImage: fs.readFileSync(this.spec.efiBootSrc)
+				});
+				const isoMBD = Math.round(binfoD.size / 1048576);
+				this.progress("building", 11, `Debian HTTP-boot mini ISO ready: ${isoOut} (${isoMBD}MB)`);
+			} else {
+				const ks = genKickstart(this.spec, this.serverIp, this.httpPort);
+				const grub = genVmediaGrubCfg(this.spec, isoLabel, {
+					slim,
+					serverIp: this.serverIp,
+					httpPort: this.httpPort
+				});
+				const binfo = await buildMiniIso({
+					repoDir: this.spec.repoDir,
+					label: isoLabel,
+					ks,
+					grubCfg: grub,
+					grubCfgPath: "/EFI/BOOT/GRUB.CFG",
+					out: isoOut,
+					slim
+				});
+				const isoMB = Math.round(binfo.size / 1048576);
+				this.progress("building", 11, `Mini boot ISO ready: ${isoOut} (${isoMB}MB, boot image ${(binfo.bootImageSize / 1048576).toFixed(1)}MB)`);
+			}
 			this.progress("mounting", 12, "Mounting virtual CD...");
 			const imageUrl = `https://${this.serverIp}/iso/${this.spec.taskId}.iso`;
 			try {
@@ -1383,6 +1445,7 @@ var DeployRunner = class {
 			} catch {}
 			this.progress("mounting", 14, `Mounting virtual CD from ${imageUrl} ...`);
 			await this.rf.vmediaConnect(imageUrl);
+			const isoMB = Math.max(1, Math.round((fs.existsSync(isoOut) ? fs.statSync(isoOut).size : 0) / 1048576));
 			const mountTimeoutMs = isoMB <= 400 ? 24e4 : 6e5;
 			let inserted = false;
 			const t0 = Date.now();
@@ -1532,4 +1595,4 @@ function getRouteIp(target) {
 	});
 }
 //#endregion
-export { extractIso as a, genPreseed as c, getRouteIp as d, DEFAULT_TLS_CERT as f, patchFatFile as g, buildMiniIso as h, SyslogCollector as i, genVmediaGrubCfg as l, FatImage as m, DeployRunner as n, genDebianHttpGrubCfg as o, DEFAULT_TLS_KEY as p, RedfishClient as r, genKickstart as s, DeployHttpServer as t, generateSelfSignedCert as u };
+export { buildMiniIso as _, ensureDebianRepoAssets as a, genKickstart as c, generateSelfSignedCert as d, getRouteIp as f, buildDebianHttpIso as g, FatImage as h, SyslogCollector as i, genPreseed as l, DEFAULT_TLS_KEY as m, DeployRunner as n, extractIso as o, DEFAULT_TLS_CERT as p, RedfishClient as r, genDebianHttpGrubCfg as s, DeployHttpServer as t, genVmediaGrubCfg as u, patchFatFile as v };

@@ -25,7 +25,7 @@ import type {
 } from './types'
 import {
   RedfishClient, DeployHttpServer, DeployRunner, DeploySpec, SyslogCollector,
-  extractIso, genKickstart, genPreseed, getRouteIp,
+  extractIso, ensureDebianRepoAssets, genKickstart, genPreseed, getRouteIp,
 } from './engine'
 import { DEFAULT_TLS_CERT, DEFAULT_TLS_KEY } from './certs'
 
@@ -216,6 +216,9 @@ export default class OsDeployService extends TypertRemoteService {
       // 虚拟光驱镜像目录（HTTPS /iso 根）与 TLS 证书
       fs.mkdirSync(this.isoDirPath(), { recursive: true })
       this.httpServer.setRoot('/iso', this.isoDirPath())
+      // Debian preseed 目录（grub 经 preseed/url=http://.../ks/<taskId>.ks 拉取）
+      fs.mkdirSync(path.join(this.storageRoot, 'ks'), { recursive: true })
+      this.httpServer.setRoot('/ks', path.join(this.storageRoot, 'ks'))
       const tls = this.ensureTls()
       await this.httpServer.start(tls)
       // 安装器实时日志（rd.syslog/inst.remotelog 推送，UDP+TCP 514）
@@ -423,6 +426,21 @@ export default class OsDeployService extends TypertRemoteService {
         if (k.startsWith(taskId + ':')) this.repoSeen.delete(k)
       }
     } catch { /* 清理失败不影响主流程 */ }
+  }
+
+  /**
+   * 找任一已解包 anaconda 系镜像（openEuler/麒麟）的 efiboot.img，
+   * 供 Debian 的 HTTP-boot 迷你 ISO 借用 grub 引导镜像
+   * （Debian 自家 grub 未编译 http/efinet 模块，无法经网络拉取 kernel/initrd）。
+   */
+  private findAnacondaEfiBoot(): string | undefined {
+    for (const img of this.images) {
+      if (img.vendor !== 'openEuler' && img.vendor !== 'kylin') continue
+      if (!img.extracted || !img.extractedDir) continue
+      const p = path.join(img.extractedDir, 'images', 'efiboot.img')
+      if (fs.existsSync(p)) return p
+    }
+    return undefined
   }
 
   // ---------- @Remote: 镜像管理 ----------
@@ -768,6 +786,19 @@ export default class OsDeployService extends TypertRemoteService {
         return
       }
     }
+    // Debian 仓库资产规范化（幂等：netboot-kernel / netboot-initrd.gz）
+    if (img.vendor === 'debian' && img.extractedDir) {
+      const assets = ensureDebianRepoAssets(img.extractedDir)
+      if (!assets.ok) {
+        task.status = 'failed'
+        task.error = assets.error!
+        task.finishedAt = Date.now()
+        this.addLog(task, 'error', task.error!)
+        this.save()
+        return
+      }
+      this.addLog(task, 'info', 'Debian netboot assets ready (netboot-kernel / netboot-initrd.gz)')
+    }
 
     // Start deployment
     task.status = 'running'
@@ -797,6 +828,9 @@ export default class OsDeployService extends TypertRemoteService {
       components: task.components,
       taskId: task.id,
       isoOutDir: this.isoDirPath(),
+      ksDir: path.join(this.storageRoot, 'ks'),
+      // Debian 需借用 anaconda 系镜像的 grub 引导镜像（Debian 自家 grub 缺 http 模块）
+      efiBootSrc: img.vendor === 'debian' ? this.findAnacondaEfiBoot() : undefined,
     }
 
     const runner = new DeployRunner(spec, serverIp, HTTP_PORT, (stage, progress, log) => {

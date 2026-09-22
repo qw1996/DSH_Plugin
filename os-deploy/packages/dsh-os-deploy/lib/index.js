@@ -1,4 +1,4 @@
-import { a as extractIso, d as getRouteIp, f as DEFAULT_TLS_CERT, i as SyslogCollector, n as DeployRunner, p as DEFAULT_TLS_KEY, r as RedfishClient, t as DeployHttpServer } from "./engine-fhVBmOiQ.js";
+import { a as ensureDebianRepoAssets, f as getRouteIp, i as SyslogCollector, m as DEFAULT_TLS_KEY, n as DeployRunner, o as extractIso, p as DEFAULT_TLS_CERT, r as RedfishClient, t as DeployHttpServer } from "./engine-CChh8wWr.js";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import * as fs from "fs";
 import * as path from "path";
@@ -602,6 +602,8 @@ let OsDeployService = (() => {
 				this.httpServer.onAccess(({ path: p, method, status, bytes, ip }) => this.onRepoAccess(p, method, status, bytes, ip));
 				fs.mkdirSync(this.isoDirPath(), { recursive: true });
 				this.httpServer.setRoot("/iso", this.isoDirPath());
+				fs.mkdirSync(path.join(this.storageRoot, "ks"), { recursive: true });
+				this.httpServer.setRoot("/ks", path.join(this.storageRoot, "ks"));
 				const tls = this.ensureTls();
 				await this.httpServer.start(tls);
 				fs.mkdirSync(this.logsDirPath(), { recursive: true });
@@ -808,6 +810,19 @@ let OsDeployService = (() => {
 				this.rpmCounts.delete(taskId);
 				for (const k of Array.from(this.repoSeen.keys())) if (k.startsWith(taskId + ":")) this.repoSeen.delete(k);
 			} catch {}
+		}
+		/**
+		* 找任一已解包 anaconda 系镜像（openEuler/麒麟）的 efiboot.img，
+		* 供 Debian 的 HTTP-boot 迷你 ISO 借用 grub 引导镜像
+		* （Debian 自家 grub 未编译 http/efinet 模块，无法经网络拉取 kernel/initrd）。
+		*/
+		findAnacondaEfiBoot() {
+			for (const img of this.images) {
+				if (img.vendor !== "openEuler" && img.vendor !== "kylin") continue;
+				if (!img.extracted || !img.extractedDir) continue;
+				const p = path.join(img.extractedDir, "images", "efiboot.img");
+				if (fs.existsSync(p)) return p;
+			}
 		}
 		async listServers() {
 			try {
@@ -1192,6 +1207,18 @@ let OsDeployService = (() => {
 					return;
 				}
 			}
+			if (img.vendor === "debian" && img.extractedDir) {
+				const assets = ensureDebianRepoAssets(img.extractedDir);
+				if (!assets.ok) {
+					task.status = "failed";
+					task.error = assets.error;
+					task.finishedAt = Date.now();
+					this.addLog(task, "error", task.error);
+					this.save();
+					return;
+				}
+				this.addLog(task, "info", "Debian netboot assets ready (netboot-kernel / netboot-initrd.gz)");
+			}
 			task.status = "running";
 			task.startedAt = Date.now();
 			this.addLog(task, "info", `Starting deployment to ${task.device.bmcHost}...`);
@@ -1218,7 +1245,9 @@ let OsDeployService = (() => {
 				repoDir: img.extractedDir || "",
 				components: task.components,
 				taskId: task.id,
-				isoOutDir: this.isoDirPath()
+				isoOutDir: this.isoDirPath(),
+				ksDir: path.join(this.storageRoot, "ks"),
+				efiBootSrc: img.vendor === "debian" ? this.findAnacondaEfiBoot() : void 0
 			};
 			const runner = new DeployRunner(spec, serverIp, HTTP_PORT, (stage, progress, log) => {
 				task.stage = stage;

@@ -60,6 +60,12 @@ declare class OsDeployService extends TypertRemoteService {
   private sweepExpiredTasks;
   /** 删除任务目录（详细安装日志等）与迷你 ISO 残留 */
   private removeTaskDir;
+  /**
+   * 找任一已解包 anaconda 系镜像（openEuler/麒麟）的 efiboot.img，
+   * 供 Debian 的 HTTP-boot 迷你 ISO 借用 grub 引导镜像
+   * （Debian 自家 grub 未编译 http/efinet 模块，无法经网络拉取 kernel/initrd）。
+   */
+  private findAnacondaEfiBoot;
   listServers(): Promise<GetServerListResult>;
   /** 列出可用根：win32 枚举存在的盘符，其余平台返回 '/'。 */
   private listRoots;
