@@ -1,11 +1,13 @@
-diag(debian): early_command 加 syslog 心跳上报
+fix(debian): link_wait_timeout 15→60（hinic 链路建链慢/偶发失败）
 
-text 前端两条路都走不通（karg d-i 不识别；preseed debconf/frontend 在 newt
-启动后才加载、切换不了已运行前端）——SOL 对 newt 主区域彻底盲。改用 syslog
-直传：early_command 起后台循环，每 10s 把 /var/log/syslog + installer.log
-尾部（tr 换行→|、sed 空格→_ &→+、截 1400 字符）通过 GET /report?stage=syslog
-上传到插件，插件 handleReport 已把 d 原样记入任务日志。
+诊断 task_e0325ae04686：netboot kernel/initrd 由 grub 拉取成功（11:24），但 d-i
+之后既没拉 /ks preseed、也没 early-apt-config，卡在 netcfg 阶段（early_command
+之前）——和之前任务（卡在 early_command 之后）是不同卡点，共同根因是网络/NIC。
 
-一次重跑即定论：
-  - 上报持续到达 → 网络没断，卡的是 d-i 对话框（syslog 内容暴露当前组件/报错）
-  - 上报在 early-apt-config 后停止 → early_command 后网络断了（netcfg 重配搞坏 hinic）
+核验 netboot initrd（67MB cpio 3190 项）：hinic.ko.xz 在
+drivers/net/ethernet/huawei/hinic/——非缺驱动。Hi1822 在 d-i netcfg 重初始化时
+link 偶发起不来（前几次到 early_command、这次卡 netcfg）。
+
+- netcfg/link_wait_timeout 15→60：给 hinic 更多建链时间，降低偶发失败概率
+- 保留 syslog 心跳：若 early_command 能到，syslog 会暴露 early_command 之后
+  choose-mirror 阶段的卡因（之前一直没看到的那段）

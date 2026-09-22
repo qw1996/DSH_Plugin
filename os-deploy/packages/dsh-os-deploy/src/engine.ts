@@ -492,11 +492,12 @@ export function genDebianHttpGrubCfg(spec: DeploySpec, serverIp: string, httpPor
     'keymap=us',
     'netcfg/disable_autoconfig=true',
     // choose_interface=auto：d-i 选首个有链路的网卡（动态探测，不写死接口名）。
-    // 本机仅 enp125s0f0 接线，2/3 次任务 early-apt-config 均正常到达，证明
-    // auto 选网卡+网络正常。卡顿在 early_command 之后（choose-mirror 不 fetch），
-    // 与选网卡无关——故不在此处硬编码接口名（换机器即失效）。
+    // hinic 驱动在 netboot initrd 内（已核验 hinic.ko.xz），非缺驱动；但 Hi1822
+    // 在 d-i netcfg 重初始化时 link 起来偏慢/偶发失败（前几次任务能到 early_command，
+    // task_e0325ae04686 却卡在 netcfg、连 preseed 都没拉）。link_wait_timeout 15→60
+    // 给 hinic 更多时间建链；若仍卡 netcfg 则需 break=mount 交互诊断驱动状态。
     'netcfg/choose_interface=auto',
-    'netcfg/link_wait_timeout=15',
+    'netcfg/link_wait_timeout=60',
     `netcfg/get_ipaddress=${spec.osIp}`,
     `netcfg/get_netmask=${mask}`,
     `netcfg/get_gateway=${spec.osGateway}`,
