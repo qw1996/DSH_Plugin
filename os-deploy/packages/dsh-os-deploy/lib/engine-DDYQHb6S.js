@@ -1055,6 +1055,7 @@ function genDebianHttpGrubCfg(spec, serverIp, httpPort) {
 	const kargs = [
 		"auto=true",
 		"priority=critical",
+		"break=mount",
 		`preseed/url=http://${serverIp}:${httpPort}/ks/${spec.taskId}.ks`,
 		"locale=en_US.UTF-8",
 		"keymap=us",

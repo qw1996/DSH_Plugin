@@ -487,6 +487,9 @@ export function genDebianHttpGrubCfg(spec: DeploySpec, serverIp: string, httpPor
   const mask = prefixToMask(spec.osPrefixLen)
   const kargs = [
     'auto=true', 'priority=critical',
+    // 临时诊断：d-i 挂载后落到 ttyS0 shell（纯文本，SOL 可交互），查 hinic 驱动/
+    // 链路状态。定位后移除。break=mount 在模块加载后、主菜单前。
+    'break=mount',
     `preseed/url=http://${serverIp}:${httpPort}/ks/${spec.taskId}.ks`,
     'locale=en_US.UTF-8',
     'keymap=us',

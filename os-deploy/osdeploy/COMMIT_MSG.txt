@@ -1,5 +1,0 @@
-fix: hostname 兜底——表单留空时默认 debian-<IP末段>
-
-task_62b15103a688 的 grub.cfg 出现 netcfg/get_hostname=（空），因任务创建时
-表单没填 hostname。空 hostname 会让 d-i netcfg 弹 "Hostname" 对话框、auto
-模式卡住。createTask 里兜底：device.hostname 为空则用 debian-<osIp末段>。
