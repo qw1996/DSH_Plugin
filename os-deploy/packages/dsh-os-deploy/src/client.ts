@@ -445,6 +445,7 @@ export async function apply(ctx: any) {
               h('span', { className: 'osd-name' }, t.device?.hostname || t.device?.bmcHost || 'unknown'),
               h('span', { className: 'osd-badge' }, t.status),
             ),
+            h('div', { className: 'osd-kv', style: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 11 } }, `任务ID: ${t.id}`),
             h('div', { className: 'osd-kv' }, `BMC: ${t.device?.bmcHost} → OS: ${t.device?.osIp}`),
             h('div', { className: 'osd-kv' }, `阶段: ${t.stage} · 进度: ${t.progress}%`),
             h('div', { className: 'osd-progress' },

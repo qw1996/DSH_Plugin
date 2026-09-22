@@ -6579,7 +6579,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					key: t.id,
 					className: "osd-device-card" + (selectedTaskId === t.id ? " osd-device-selected" : ""),
 					onClick: () => setSelectedTaskId(selectedTaskId === t.id ? null : t.id)
-				}, h("div", { className: "osd-row" }, h("span", { className: `osd-dot osd-${t.status}` }), h("span", { className: "osd-name" }, t.device?.hostname || t.device?.bmcHost || "unknown"), h("span", { className: "osd-badge" }, t.status)), h("div", { className: "osd-kv" }, `BMC: ${t.device?.bmcHost} → OS: ${t.device?.osIp}`), h("div", { className: "osd-kv" }, `阶段: ${t.stage} · 进度: ${t.progress}%`), h("div", { className: "osd-progress" }, h("div", {
+				}, h("div", { className: "osd-row" }, h("span", { className: `osd-dot osd-${t.status}` }), h("span", { className: "osd-name" }, t.device?.hostname || t.device?.bmcHost || "unknown"), h("span", { className: "osd-badge" }, t.status)), h("div", {
+					className: "osd-kv",
+					style: {
+						fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+						fontSize: 11
+					}
+				}, `任务ID: ${t.id}`), h("div", { className: "osd-kv" }, `BMC: ${t.device?.bmcHost} → OS: ${t.device?.osIp}`), h("div", { className: "osd-kv" }, `阶段: ${t.stage} · 进度: ${t.progress}%`), h("div", { className: "osd-progress" }, h("div", {
 					className: `osd-progress-bar osd-progress-${t.status}`,
 					style: { width: `${t.progress}%` }
 				})), h("div", { className: "osd-kv" }, `创建: ${fmt(t.createdAt)}${t.finishedAt ? " · 完成: " + fmt(t.finishedAt) : ""}`), t.error && h("div", { style: {
