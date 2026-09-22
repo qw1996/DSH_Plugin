@@ -161,7 +161,7 @@ export async function apply(ctx: any) {
       // Manual device input
       bmcHost: '', bmcUser: 'Administrator', bmcPassword: '',
       nicMac: '', hostname: '', osIp: '', osGateway: '', osPrefixLen: '24',
-      osDns: '114.114.114.114', rootPassword: '', diskSn: '',
+      osDns: '114.114.114.114', rootPassword: '', diskSn: '', diskCapacityBytes: 0,
       // From server-manager
       useServerManager: false, selectedServerIds: [] as string[],
     })
@@ -296,7 +296,7 @@ export async function apply(ctx: any) {
         const r = unwrap(await remote.probeDevice({ bmcHost: form.bmcHost, bmcUser: form.bmcUser, bmcPassword: form.bmcPassword }))
         setProbeResult(r)
         if (r.ok && r.nicMac) setForm((f: any) => ({ ...f, nicMac: r.nicMac }))
-        if (r.ok && r.disks && r.disks.length === 1) setForm((f: any) => ({ ...f, diskSn: r.disks[0].serial }))
+        if (r.ok && r.disks && r.disks.length === 1) setForm((f: any) => ({ ...f, diskSn: r.disks[0].serial, diskCapacityBytes: r.disks[0].capacityBytes || 0 }))
       } catch (e: any) { setProbeResult({ ok: false, error: String(e?.message || e) }) }
       finally { setBusy(false) }
     }
@@ -317,6 +317,7 @@ export async function apply(ctx: any) {
               osIp: form.osIp, osGateway: form.osGateway, osPrefixLen: parseInt(form.osPrefixLen) || 24,
               osDns: form.osDns.split(',').map((s: string) => s.trim()).filter(Boolean),
               rootPassword: form.rootPassword, diskSn: form.diskSn,
+              diskCapacityBytes: form.diskCapacityBytes || 0,
               sshUser: srv.sshUser, label: srv.name,
             })
           }
@@ -329,6 +330,7 @@ export async function apply(ctx: any) {
             osIp: form.osIp, osGateway: form.osGateway, osPrefixLen: parseInt(form.osPrefixLen) || 24,
             osDns: form.osDns.split(',').map((s: string) => s.trim()).filter(Boolean),
             rootPassword: form.rootPassword, diskSn: form.diskSn,
+            diskCapacityBytes: form.diskCapacityBytes || 0,
             label: form.hostname || form.bmcHost,
           })
         }
@@ -572,7 +574,7 @@ export async function apply(ctx: any) {
                   key: (d.id || '') + (d.serial || ''),
                   className: 'osd-diskrow' + (form.diskSn && form.diskSn === d.serial ? ' osd-diskrow-selected' : ''),
                   title: `安装到 ${d.name || d.id || ''} (SN ${d.serial || '?'}) —— 将清空此盘全部数据`,
-                  onClick: () => setForm((f: any) => ({ ...f, diskSn: f.diskSn === d.serial ? '' : d.serial })),
+                  onClick: () => setForm((f: any) => ({ ...f, diskSn: f.diskSn === d.serial ? '' : d.serial, diskCapacityBytes: f.diskSn === d.serial ? 0 : (d.capacityBytes || 0) })),
                 },
                   h('span', null, d.name || d.id || '—'),
                   h('span', { className: 'osd-disk-sn' }, d.serial || '—'),

@@ -5317,6 +5317,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				"osDns": array(string()),
 				"rootPassword": string(),
 				"diskSn": union([_undefined(), string()]).optional(),
+				"diskCapacityBytes": union([_undefined(), number()]).optional(),
 				"sshUser": union([_undefined(), string()]).optional(),
 				"sshPort": union([_undefined(), number()]).optional(),
 				"label": union([_undefined(), string()]).optional()
@@ -5368,6 +5369,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					"osDns": array(string()),
 					"rootPassword": string(),
 					"diskSn": union([_undefined(), string()]).optional(),
+					"diskCapacityBytes": union([_undefined(), number()]).optional(),
 					"sshUser": union([_undefined(), string()]).optional(),
 					"sshPort": union([_undefined(), number()]).optional(),
 					"label": union([_undefined(), string()]).optional()
@@ -5450,6 +5452,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				"osDns": array(string()),
 				"rootPassword": string(),
 				"diskSn": union([_undefined(), string()]).optional(),
+				"diskCapacityBytes": union([_undefined(), number()]).optional(),
 				"sshUser": union([_undefined(), string()]).optional(),
 				"sshPort": union([_undefined(), number()]).optional(),
 				"label": union([_undefined(), string()]).optional()
@@ -5611,7 +5614,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 488,
+						"line": 490,
 						"column": 9
 					}
 				},
@@ -5638,7 +5641,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 698,
+						"line": 700,
 						"column": 9
 					}
 				},
@@ -5665,7 +5668,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 657,
+						"line": 659,
 						"column": 9
 					}
 				},
@@ -5692,7 +5695,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 566,
+						"line": 568,
 						"column": 9
 					}
 				},
@@ -5719,7 +5722,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 716,
+						"line": 718,
 						"column": 9
 					}
 				},
@@ -5746,7 +5749,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 547,
+						"line": 549,
 						"column": 9
 					}
 				},
@@ -5764,7 +5767,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 163,
+						"line": 165,
 						"column": 9
 					}
 				},
@@ -5791,7 +5794,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 690,
+						"line": 692,
 						"column": 9
 					}
 				},
@@ -5818,7 +5821,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 596,
+						"line": 598,
 						"column": 9
 					}
 				},
@@ -5836,7 +5839,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 589,
+						"line": 591,
 						"column": 9
 					}
 				},
@@ -5854,7 +5857,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 448,
+						"line": 450,
 						"column": 9
 					}
 				},
@@ -5872,7 +5875,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 684,
+						"line": 686,
 						"column": 9
 					}
 				},
@@ -5899,7 +5902,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 602,
+						"line": 604,
 						"column": 9
 					}
 				},
@@ -5926,7 +5929,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 522,
+						"line": 524,
 						"column": 9
 					}
 				},
@@ -5944,7 +5947,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 382,
+						"line": 384,
 						"column": 9
 					}
 				},
@@ -5962,7 +5965,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 207,
+						"line": 209,
 						"column": 9
 					}
 				},
@@ -5980,7 +5983,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 193,
+						"line": 195,
 						"column": 9
 					}
 				},
@@ -5998,7 +6001,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 355,
+						"line": 357,
 						"column": 9
 					}
 				},
@@ -6025,7 +6028,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					},
 					sourceLocation: {
 						"file": "packages/dsh-os-deploy/src/index.ts",
-						"line": 168,
+						"line": 170,
 						"column": 9
 					}
 				}
@@ -6187,6 +6190,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					osDns: "114.114.114.114",
 					rootPassword: "",
 					diskSn: "",
+					diskCapacityBytes: 0,
 					useServerManager: false,
 					selectedServerIds: []
 				});
@@ -6402,7 +6406,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						}));
 						if (r.ok && r.disks && r.disks.length === 1) setForm((f) => ({
 							...f,
-							diskSn: r.disks[0].serial
+							diskSn: r.disks[0].serial,
+							diskCapacityBytes: r.disks[0].capacityBytes || 0
 						}));
 					} catch (e) {
 						setProbeResult({
@@ -6434,6 +6439,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 								osDns: form.osDns.split(",").map((s) => s.trim()).filter(Boolean),
 								rootPassword: form.rootPassword,
 								diskSn: form.diskSn,
+								diskCapacityBytes: form.diskCapacityBytes || 0,
 								sshUser: srv.sshUser,
 								label: srv.name
 							});
@@ -6451,6 +6457,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 							osDns: form.osDns.split(",").map((s) => s.trim()).filter(Boolean),
 							rootPassword: form.rootPassword,
 							diskSn: form.diskSn,
+							diskCapacityBytes: form.diskCapacityBytes || 0,
 							label: form.hostname || form.bmcHost
 						});
 						if (devices.length === 0) {
@@ -6632,7 +6639,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					title: `安装到 ${d.name || d.id || ""} (SN ${d.serial || "?"}) —— 将清空此盘全部数据`,
 					onClick: () => setForm((f) => ({
 						...f,
-						diskSn: f.diskSn === d.serial ? "" : d.serial
+						diskSn: f.diskSn === d.serial ? "" : d.serial,
+						diskCapacityBytes: f.diskSn === d.serial ? 0 : d.capacityBytes || 0
 					}))
 				}, h("span", null, d.name || d.id || "—"), h("span", { className: "osd-disk-sn" }, d.serial || "—"), h("span", null, [d.protocol, d.media].filter(Boolean).join(" ") || "—"), h("span", null, fmtCap(d.capacityBytes)))))), probeResult?.ok && (probeResult.disks || []).length === 0 && h("span", { className: "osd-meta" }, "未发现磁盘（安装时将自动使用第一块盘）"))), h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "4. OS 配置"), h("div", { className: "osd-row" }, field("root 密码", form.rootPassword, setF("rootPassword"), "", "password"), field("主机名", form.hostname, setF("hostname"), "server-01")), h("div", { className: "osd-row" }, field("OS IP", form.osIp, setF("osIp"), "192.168.1.100"), field("网关", form.osGateway, setF("osGateway"), "192.168.1.1"), field("子网掩码位数", form.osPrefixLen, setF("osPrefixLen"), "24"), field("DNS", form.osDns, setF("osDns"), "114.114.114.114")), h("div", { className: "osd-row" }, field("业务网卡 MAC", form.nicMac, setF("nicMac"), "aa:bb:cc:dd:ee:ff")), h("div", { className: "osd-meta" }, form.diskSn ? `目标磁盘 SN: ${form.diskSn} —— 安装会清空该盘上的所有数据！` : "注意：未选择目标磁盘时将自动使用第一块盘，安装会清空该盘上的所有数据！")), h("div", { className: "osd-row" }, btn("创建安装任务", doCreateTask, "osd-btn-primary", busy || !svc.running || !form.imageId || !form.rootPassword || !form.useServerManager && !form.bmcHost), !svc.running && h("span", {
 					className: "osd-meta",

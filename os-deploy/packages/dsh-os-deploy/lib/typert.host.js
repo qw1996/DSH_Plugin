@@ -40,6 +40,7 @@ const _qinwei_dsh_os_deploy_osDeploy_createTask_parameter_0$schema = z.object({
   'osDns': z.array(z.string()),
   'rootPassword': z.string(),
   'diskSn': z.union([z.undefined(), z.string()]).optional(),
+  'diskCapacityBytes': z.union([z.undefined(), z.number()]).optional(),
   'sshUser': z.union([z.undefined(), z.string()]).optional(),
   'sshPort': z.union([z.undefined(), z.number()]).optional(),
   'label': z.union([z.undefined(), z.string()]).optional(),
@@ -99,6 +100,7 @@ const _qinwei_dsh_os_deploy_osDeploy_getTaskDetail_result$schema = z.object({
   'osDns': z.array(z.string()),
   'rootPassword': z.string(),
   'diskSn': z.union([z.undefined(), z.string()]).optional(),
+  'diskCapacityBytes': z.union([z.undefined(), z.number()]).optional(),
   'sshUser': z.union([z.undefined(), z.string()]).optional(),
   'sshPort': z.union([z.undefined(), z.number()]).optional(),
   'label': z.union([z.undefined(), z.string()]).optional(),
@@ -171,6 +173,7 @@ const _qinwei_dsh_os_deploy_osDeploy_listTasks_result$schema = z.object({
   'osDns': z.array(z.string()),
   'rootPassword': z.string(),
   'diskSn': z.union([z.undefined(), z.string()]).optional(),
+  'diskCapacityBytes': z.union([z.undefined(), z.number()]).optional(),
   'sshUser': z.union([z.undefined(), z.string()]).optional(),
   'sshPort': z.union([z.undefined(), z.number()]).optional(),
   'label': z.union([z.undefined(), z.string()]).optional(),
@@ -318,7 +321,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#BrowsePathResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_browsePath_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":488,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":490,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/cancelTask',
@@ -343,7 +346,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#CancelTaskResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_cancelTask_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":698,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":700,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/createTask',
@@ -368,7 +371,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#CreateTaskResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_createTask_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":657,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":659,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/deleteImage',
@@ -393,7 +396,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#DeleteImageResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_deleteImage_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":566,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":568,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/deleteTask',
@@ -418,7 +421,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#DeleteTaskResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_deleteTask_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":716,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":718,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/extractImage',
@@ -443,7 +446,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#ExtractImageResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_extractImage_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":547,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":549,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/getConfig',
@@ -458,7 +461,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#GetConfigResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_getConfig_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":163,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":165,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/getTaskDetail',
@@ -483,7 +486,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#GetTaskDetailResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_getTaskDetail_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":690,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":692,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/listComponents',
@@ -508,7 +511,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#ListComponentsResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_listComponents_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":596,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":598,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/listImages',
@@ -523,7 +526,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#ListImagesResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_listImages_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":589,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":591,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/listServers',
@@ -538,7 +541,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#GetServerListResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_listServers_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":448,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":450,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/listTasks',
@@ -553,7 +556,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#ListTasksResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_listTasks_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":684,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":686,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/probeDevice',
@@ -578,7 +581,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#ProbeDeviceResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_probeDevice_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":602,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":604,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/registerIso',
@@ -603,7 +606,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#RegisterIsoResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_registerIso_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":522,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":524,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/serviceRestart',
@@ -618,7 +621,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#ServiceControlResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_serviceRestart_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":382,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":384,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/serviceStart',
@@ -633,7 +636,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#ServiceControlResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_serviceStart_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":207,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":209,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/serviceStatus',
@@ -648,7 +651,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#ServiceStatusResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_serviceStatus_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":193,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":195,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/serviceStop',
@@ -663,7 +666,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#ServiceControlResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_serviceStop_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":355,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":357,"column":9},
     },
     {
       id: '@qinwei/dsh-os-deploy#osDeploy/setConfig',
@@ -688,7 +691,7 @@ export const TYPERT = {
         typeSymbol: '@qinwei/dsh-os-deploy/types#SetConfigResult',
         schema: _qinwei_dsh_os_deploy_osDeploy_setConfig_result$schema,
       },
-      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":168,"column":9},
+      sourceLocation: {"file":"packages/dsh-os-deploy/src/index.ts","line":170,"column":9},
     },
   ],
   model: {

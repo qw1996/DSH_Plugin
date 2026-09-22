@@ -27,6 +27,8 @@ import {
   RedfishClient, DeployHttpServer, DeployRunner, DeploySpec, SyslogCollector,
   extractIso, ensureDebianRepoAssets, genKickstart, genPreseed, getRouteIp,
 } from './engine'
+// 纯函数再导出，便于测试与离线校验（不暴露 RedfishClient 等内部类）
+export { genPreseed, genKickstart, genDebianHttpGrubCfg, ensureDebianRepoAssets } from './engine'
 import { DEFAULT_TLS_CERT, DEFAULT_TLS_KEY } from './certs'
 
 type Json = any
@@ -280,11 +282,11 @@ export default class OsDeployService extends TypertRemoteService {
         }
         return
       }
-      // 逐包：每个 RPM 一条日志（用户要求看到"正在安装什么包"）
-      if (/\.rpm$/i.test(p)) {
+      // 逐包：每个 RPM/DEB 一条日志（用户要求看到"正在安装什么包"）
+      if (/\.rpm$/i.test(p) || /\.deb$/i.test(p)) {
         const n = (this.rpmCounts.get(task.id) || 0) + 1
         this.rpmCounts.set(task.id, n)
-        const pkg = (p.split('/').pop() || '').replace(/\.rpm$/i, '')
+        const pkg = (p.split('/').pop() || '').replace(/\.(rpm|deb)$/i, '')
         this.addLog(task, 'info', `安装软件包 #${n}: ${pkg}`)
         task.stage = 'installing-rpms'
         task.progress = Math.max(task.progress, Math.min(45 + Math.floor(n * 0.12), 85))
@@ -786,7 +788,7 @@ export default class OsDeployService extends TypertRemoteService {
         return
       }
     }
-    // Debian 仓库资产规范化（幂等：netboot-kernel / netboot-initrd.gz）
+    // Debian 仓库资产校验（netboot 资产 + dists 签名元数据）
     if (img.vendor === 'debian' && img.extractedDir) {
       const assets = ensureDebianRepoAssets(img.extractedDir)
       if (!assets.ok) {
@@ -797,6 +799,7 @@ export default class OsDeployService extends TypertRemoteService {
         this.save()
         return
       }
+      if (assets.warning) this.addLog(task, 'info', assets.warning)
       this.addLog(task, 'info', 'Debian netboot assets ready (netboot-kernel / netboot-initrd.gz)')
     }
 
@@ -822,6 +825,7 @@ export default class OsDeployService extends TypertRemoteService {
       osDns: task.device.osDns,
       rootPassword: task.device.rootPassword,
       diskSn: task.device.diskSn || '', // 空则安装期 %pre 自动选第一块盘
+      diskCapacityBytes: task.device.diskCapacityBytes || 0,
       distroId: img.distroId,
       vendor: img.vendor,
       repoDir: img.extractedDir || '',
@@ -887,6 +891,7 @@ export default class OsDeployService extends TypertRemoteService {
       const stageProgress: Record<string, number> = {
         'pre-start': 30, 'cmdline': 32, 'disks': 34, 'disk-resolved': 36,
         'pre-done': 38, 'include-uploaded': 40, 'post-install': 85, 'firstboot': 95,
+        'early-apt-config': 27,
       }
       if (stage in stageProgress) {
         task.progress = stageProgress[stage]

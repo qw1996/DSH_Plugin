@@ -34,6 +34,8 @@ interface TargetDevice {
   osDns: string[];
   rootPassword: string;
   diskSn?: string;
+  /** 目标磁盘容量（字节，来自探测；Debian partman 容量指纹回退用） */
+  diskCapacityBytes?: number;
   sshUser?: string;
   sshPort?: number;
   label?: string;

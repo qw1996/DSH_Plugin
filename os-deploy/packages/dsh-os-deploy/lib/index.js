@@ -1,4 +1,4 @@
-import { a as ensureDebianRepoAssets, f as getRouteIp, i as SyslogCollector, m as DEFAULT_TLS_KEY, n as DeployRunner, o as extractIso, p as DEFAULT_TLS_CERT, r as RedfishClient, t as DeployHttpServer } from "./engine-CChh8wWr.js";
+import { a as ensureDebianRepoAssets, c as genKickstart, f as getRouteIp, i as SyslogCollector, l as genPreseed, m as DEFAULT_TLS_KEY, n as DeployRunner, o as extractIso, p as DEFAULT_TLS_CERT, r as RedfishClient, s as genDebianHttpGrubCfg, t as DeployHttpServer } from "./engine-DIfaKY7O.js";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import * as fs from "fs";
 import * as path from "path";
@@ -659,10 +659,10 @@ let OsDeployService = (() => {
 					}
 					return;
 				}
-				if (/\.rpm$/i.test(p)) {
+				if (/\.rpm$/i.test(p) || /\.deb$/i.test(p)) {
 					const n = (this.rpmCounts.get(task.id) || 0) + 1;
 					this.rpmCounts.set(task.id, n);
-					const pkg = (p.split("/").pop() || "").replace(/\.rpm$/i, "");
+					const pkg = (p.split("/").pop() || "").replace(/\.(rpm|deb)$/i, "");
 					this.addLog(task, "info", `安装软件包 #${n}: ${pkg}`);
 					task.stage = "installing-rpms";
 					task.progress = Math.max(task.progress, Math.min(45 + Math.floor(n * .12), 85));
@@ -1217,6 +1217,7 @@ let OsDeployService = (() => {
 					this.save();
 					return;
 				}
+				if (assets.warning) this.addLog(task, "info", assets.warning);
 				this.addLog(task, "info", "Debian netboot assets ready (netboot-kernel / netboot-initrd.gz)");
 			}
 			task.status = "running";
@@ -1240,6 +1241,7 @@ let OsDeployService = (() => {
 				osDns: task.device.osDns,
 				rootPassword: task.device.rootPassword,
 				diskSn: task.device.diskSn || "",
+				diskCapacityBytes: task.device.diskCapacityBytes || 0,
 				distroId: img.distroId,
 				vendor: img.vendor,
 				repoDir: img.extractedDir || "",
@@ -1296,7 +1298,8 @@ let OsDeployService = (() => {
 					"pre-done": 38,
 					"include-uploaded": 40,
 					"post-install": 85,
-					"firstboot": 95
+					"firstboot": 95,
+					"early-apt-config": 27
 				};
 				if (stage in stageProgress) {
 					task.progress = stageProgress[stage];
@@ -1323,4 +1326,4 @@ let OsDeployService = (() => {
 	};
 })();
 //#endregion
-export { OsDeployService as default };
+export { OsDeployService as default, ensureDebianRepoAssets, genDebianHttpGrubCfg, genKickstart, genPreseed };

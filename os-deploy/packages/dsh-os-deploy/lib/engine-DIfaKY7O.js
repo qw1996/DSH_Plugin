@@ -923,11 +923,46 @@ __R2 post-service "osdeploy-report enabled"
 function genPreseed(spec, serverIp, httpPort) {
 	const pw = spec.rootPassword;
 	const dns = (spec.osDns || ["114.114.114.114"]).join(" ");
-	const base = `http://${serverIp}:${httpPort}/repo/${spec.distroId}`;
+	const base = `http://${serverIp}:${httpPort}/report`;
 	const components = buildPackageList(spec.vendor, spec.components);
+	const sn = spec.diskSn || "";
+	const cap = spec.diskCapacityBytes || 0;
+	let partman = [
+		`d-i partman/early_command string \\`,
+		`  DEV="" ; \\`,
+		`  for d in /dev/disk/by-id/* ; do \\`,
+		`    case "$d" in *-part*) continue ;; esac ; \\`,
+		`    case "$d" in *"${sn}"*) DEV="$d"; break ;; esac ; \\`,
+		`  done ; \\`
+	];
+	if (cap > 0) partman = partman.concat([
+		`  if [ -z "$DEV" ] ; then \\`,
+		`    MATCHES="" ; \\`,
+		`    for b in /sys/block/sd* ; do \\`,
+		`      b=$(basename "$b") ; \\`,
+		`      sz=$(( $(cat /sys/block/$b/size 2>/dev/null || echo 0) * 512 )) ; \\`,
+		`      diff=$(( sz - ${cap} )) ; [ $diff -lt 0 ] && diff=$(( -diff )) ; \\`,
+		`      if [ $(( diff * 100 / ${cap} )) -le 2 ] ; then MATCHES="$MATCHES /dev/$b" ; fi ; \\`,
+		`    done ; \\`,
+		`    if [ "$(echo $MATCHES | wc -w)" -eq 1 ] ; then DEV=$(echo $MATCHES) ; fi ; \\`,
+		`  fi ; \\`
+	]);
+	partman = partman.concat([
+		`  if [ -n "$DEV" ] ; then \\`,
+		`    wget -q -O /dev/null "${base}?task=${spec.taskId}&stage=disk-resolved&d=$DEV" || true ; \\`,
+		`    . /usr/share/debconf/confmodule ; \\`,
+		`    db_set partman-auto/disk "$DEV" ; \\`,
+		`  else \\`,
+		`    wget -q -O /dev/null "${base}?task=${spec.taskId}&stage=fatal&d=disk-not-found-at-partman" || true ; \\`,
+		`  fi ; \\`,
+		`  true`
+	]);
 	return `#### osdeploy generated preseed
 d-i debian-installer/locale string en_US.UTF-8
 d-i keyboard-configuration/xkb-keymap select us
+d-i console-setup/ask_detect boolean false
+d-i hw-detect/load_firmware boolean false
+d-i netcfg/confirm_static boolean true
 d-i netcfg/disable_autoconfig boolean true
 d-i netcfg/get_ipaddress string ${spec.osIp}
 d-i netcfg/get_netmask string ${prefixToMask(spec.osPrefixLen)}
@@ -936,7 +971,7 @@ d-i netcfg/get_nameservers string ${dns}
 d-i netcfg/get_hostname string ${spec.hostname}
 d-i netcfg/get_domain string local
 d-i mirror/country string manual
-d-i mirror/http/hostname string ${serverIp}
+d-i mirror/http/hostname string ${serverIp}:${httpPort}
 d-i mirror/http/directory string /repo/${spec.distroId}
 d-i mirror/http/proxy string
 d-i apt-setup/services-select multiselect none
@@ -950,17 +985,7 @@ d-i partman-auto/method string regular
 d-i partman-lvm/device_remove_lvm boolean true
 d-i partman-md/device_remove_md boolean true
 d-i partman-auto/choose_recipe select atomic
-d-i partman/early_command string \\
-  DEV="" ; \\
-  for d in /dev/disk/by-id/* ; do \\
-    case "$d" in *-part*) continue ;; esac ; \\
-    case "$d" in *"${spec.diskSn}"*) DEV="$d"; break ;; esac ; \\
-  done ; \\
-  if [ -n "$DEV" ] ; then \\
-    . /usr/share/debconf/confmodule ; \\
-    db_set partman-auto/disk "$DEV" ; \\
-  fi ; \\
-  true
+${partman.join("\n")}
 d-i partman-partitioning/confirm_write_new_label boolean true
 d-i partman/choose_partition select finish
 d-i partman/confirm boolean true
@@ -968,6 +993,7 @@ d-i partman/confirm_nooverwrite boolean true
 d-i debian-installer/allow_unauthenticated boolean true
 d-i grub-installer/only_debian boolean true
 d-i grub-installer/with_other_os boolean false
+d-i debian-installer/add-kernel-opts string console=tty0 console=ttyS0,115200n8
 d-i pkgsel/include string ${components.replace(/\n/g, " ")}
 d-i pkgsel/upgrade select none
 d-i popularity-contest/participate boolean false
@@ -975,11 +1001,16 @@ d-i finish-install/reboot_in_progress note
 
 d-i preseed/early_command string \\
   mkdir -p /etc/apt/apt.conf.d ; \\
-  printf 'Acquire::AllowInsecureRepositories "true";\\nAPT::Get::AllowUnauthenticated "true";\\n' > /etc/apt/apt.conf.d/99osdeploy.conf
+  printf '%s\\n' 'Acquire::AllowInsecureRepositories "true";' 'APT::Get::AllowUnauthenticated "true";' > /etc/apt/apt.conf.d/99osdeploy.conf ; \\
+  sh -c "while [ ! -d /target/etc/apt/apt.conf.d ]; do sleep 2; done; cp /etc/apt/apt.conf.d/99osdeploy.conf /target/etc/apt/apt.conf.d/99osdeploy.conf" & \\
+  wget -q -O /dev/null "${base}?task=${spec.taskId}&stage=early-apt-config" || true
 
 d-i preseed/late_command string \\
   in-target sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config ; \\
-  in-target curl -s -m 10 "${base}/../report?m=deploy&task=${spec.taskId}&stage=post-install" || true
+  mkdir -p /target/etc/osdeploy ; \\
+  printf '{"machine":"${spec.hostname}","targetSn":"${sn}"}\\n' > /target/etc/osdeploy/info.json ; \\
+  in-target sh -c "printf '[Unit]\\nDescription=osdeploy firstboot report\\nAfter=network-online.target\\nWants=network-online.target\\n\\n[Service]\\nType=oneshot\\nExecStart=/usr/bin/curl -s -m 10 \\"${base}?task=${spec.taskId}&stage=firstboot\\"\\n\\n[Install]\\nWantedBy=multi-user.target\\n' > /etc/systemd/system/osdeploy-report.service; systemctl enable osdeploy-report.service" || true ; \\
+  in-target curl -s -m 10 "${base}?task=${spec.taskId}&stage=post-install" || true
 `;
 }
 /**
@@ -1026,7 +1057,7 @@ function genDebianHttpGrubCfg(spec, serverIp, httpPort) {
 		"locale=en_US.UTF-8",
 		"keymap=us",
 		"netcfg/disable_autoconfig=true",
-		`netcfg/choose_interface=${spec.nicMac}`,
+		"netcfg/choose_interface=auto",
 		"netcfg/link_wait_timeout=15",
 		`netcfg/get_ipaddress=${spec.osIp}`,
 		`netcfg/get_netmask=${mask}`,
@@ -1327,22 +1358,62 @@ function extractIso(isoPath, outDir) {
 	}
 }
 /**
-* Debian 仓库资产规范化（幂等）：Debian 媒体的安装器内核在 install.a64/ 下，
-* grub HTTP 引导引用的是仓库根的 netboot-kernel / netboot-initrd.gz——
-* 缺则从 install.a64 拷贝（原 osdeploy 工具实证布局）。
+* Debian 仓库资产校验（幂等、只读）。
+*
+* 关键事实（原 osdeploy 工具 9/18-9/20 实证）：Debian DVD 的 install.a64/
+* initrd.gz 含 cdrom-detect，期望在虚拟光驱上找到安装媒体——而我们的小
+* 迷你 ISO 只有 grub，没有 dists/pool → d-i 卡死在"检测安装媒体"。
+* 必须用真正的 netboot initrd（deb.debian.org 的 netboot/gtk/cdrom 之外的
+* 纯网络启动 initrd，无 cdrom-detect）+ 匹配版本的内核 udeb。
+*
+* 因此本函数不再从 install.a64 拷贝（那会制造"看起来有、实则必死"的资产），
+* 而是校验：netboot 资产存在且不是 install.a64 的逐字节副本（即不是 DVD
+* cdrom initrd）；dists 签名元数据存在（缺失则告警，未签名靠 99osdeploy.conf
+* 放行亦可，但签名更稳）。
 */
 function ensureDebianRepoAssets(repoDir) {
 	try {
-		const pairs = [[path.join(repoDir, "install.a64", "vmlinuz"), path.join(repoDir, "netboot-kernel")], [path.join(repoDir, "install.a64", "initrd.gz"), path.join(repoDir, "netboot-initrd.gz")]];
-		for (const [src, dst] of pairs) {
-			if (fs.existsSync(dst)) continue;
-			if (!fs.existsSync(src)) return {
-				ok: false,
-				error: `missing installer asset: ${src}（该镜像可能不是标准 Debian arm64 安装介质）`
-			};
-			fs.copyFileSync(src, dst);
-		}
-		return { ok: true };
+		const nbKernel = path.join(repoDir, "netboot-kernel");
+		const nbInitrd = path.join(repoDir, "netboot-initrd.gz");
+		const iaKernel = path.join(repoDir, "install.a64", "vmlinuz");
+		const iaInitrd = path.join(repoDir, "install.a64", "initrd.gz");
+		if (!fs.existsSync(nbKernel) || !fs.existsSync(nbInitrd)) return {
+			ok: false,
+			error: `缺少 Debian netboot 引导资产（${path.basename(repoDir)}/netboot-kernel 与 netboot-initrd.gz）。\n注意：不能直接用 install.a64/ 下的 vmlinuz/initrd.gz——那是 DVD 的 cdrom 安装器 initrd，含 cdrom-detect，\n而我们的迷你 ISO 没有 dists/pool 安装媒体结构，d-i 会卡死在"检测安装媒体"（9/18 故障根因之一）。\n请用 deb.debian.org/debian/dists/trixie/main/installer-arm64/current/images/netboot/netboot.tar.gz 中的\n真 netboot kernel+initrd 放到仓库根，并确保 pool 里有匹配版本的内核 udeb（6.12.107 等）。\n（本机已从原 osdeploy 工具的已验证仓库同步过这套资产——若刚重新解包镜像则需重新同步。）`
+		};
+		const sameSize = (a, b) => {
+			try {
+				return fs.existsSync(a) && fs.existsSync(b) && fs.statSync(a).size === fs.statSync(b).size;
+			} catch {
+				return false;
+			}
+		};
+		const sameBytes = (a, b) => {
+			if (!sameSize(a, b)) return false;
+			try {
+				return fs.readFileSync(a).equals(fs.readFileSync(b));
+			} catch {
+				return false;
+			}
+		};
+		if (fs.existsSync(iaInitrd) && sameBytes(nbInitrd, iaInitrd) || fs.existsSync(iaKernel) && sameBytes(nbKernel, iaKernel)) return {
+			ok: false,
+			error: "netboot-initrd.gz 与 install.a64/initrd.gz 逐字节相同——这是 DVD 的 cdrom 安装器 initrd（含 cdrom-detect），\n我们的迷你 ISO 无安装媒体结构，d-i 必卡死在\"检测安装媒体\"（9/18 故障根因之一）。\n请用 deb.debian.org 的真 netboot initrd 替换 netboot-initrd.gz / netboot-kernel，并同步匹配版本的内核 udeb。\n（本机已从原 osdeploy 工具仓库同步过正确的 netboot 资产——若刚重新解包镜像则需重新同步。）"
+		};
+		const suiteDir = path.join(repoDir, "dists", "trixie");
+		const hasInRelease = fs.existsSync(path.join(suiteDir, "InRelease"));
+		const hasRelease = fs.existsSync(path.join(suiteDir, "Release"));
+		const hasGpg = fs.existsSync(path.join(suiteDir, "Release.gpg"));
+		if (!hasRelease) return {
+			ok: false,
+			error: `缺少 dists/trixie/Release（仓库结构不完整，请重新解包镜像）`
+		};
+		let warning;
+		if (!hasInRelease || !hasGpg) warning = `dists/trixie 缺 ${[!hasInRelease && "InRelease", !hasGpg && "Release.gpg"].filter(Boolean).join("/")}（未签名仓库靠 99osdeploy.conf 放行，可用但建议补齐签名文件）`;
+		return {
+			ok: true,
+			warning
+		};
 	} catch (e) {
 		return {
 			ok: false,
@@ -1397,6 +1468,7 @@ var DeployRunner = class {
 			if (isDebian) {
 				const assets = ensureDebianRepoAssets(this.spec.repoDir);
 				if (!assets.ok) throw new Error(assets.error);
+				if (assets.warning) this.progress("building", 8, assets.warning.slice(0, 200));
 				if (!this.spec.efiBootSrc || !fs.existsSync(this.spec.efiBootSrc)) throw new Error("Debian 部署需要一个已解包的 openEuler 或麒麟镜像（借用其 grub 引导镜像，Debian 自家 grub 缺少 http 模块）。请先注册并解包任一 anaconda 系镜像。");
 				if (!this.spec.ksDir) throw new Error("ksDir 未配置");
 				fs.mkdirSync(this.spec.ksDir, { recursive: true });

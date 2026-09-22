@@ -42,6 +42,8 @@ export interface TargetDevice {
   rootPassword: string
   // 目标磁盘 SN（探测设备后选定；空 = 安装期 %pre 自动选第一块盘）
   diskSn?: string
+  /** 目标磁盘容量（字节，来自探测；Debian partman 容量指纹回退用） */
+  diskCapacityBytes?: number
   // SSH info (optional, for verification after install)
   sshUser?: string
   sshPort?: number
