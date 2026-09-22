@@ -79,6 +79,13 @@ interface BmcInfo {
 interface DeploySpec {
   bmc: BmcInfo;
   nicMac: string;
+  /** 目标网卡接口名（如 enp125s0f0）——Debian grub kargs 的
+   *  netcfg/choose_interface 用接口名（非 MAC、非 auto）：
+   *  auto 会让 netcfg 扫描全部端口找链路，Hi1822 四端口扫描时 down/up
+   *  易触发 hinic 驱动问题导致网络断、choose-mirror fetch 失败卡死
+   *  （9/22 故障）；显式接口名让 netcfg 直连该口、不扫描，网络保持
+   *  通畅（原工具实证）。空则回退 auto。 */
+  nicInterface?: string;
   hostname: string;
   osIp: string;
   osGateway: string;

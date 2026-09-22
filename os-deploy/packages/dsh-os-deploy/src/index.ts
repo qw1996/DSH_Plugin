@@ -824,6 +824,7 @@ export default class OsDeployService extends TypertRemoteService {
     const spec: DeploySpec = {
       bmc: { host: task.device.bmcHost, user: task.device.bmcUser, pass: task.device.bmcPassword },
       nicMac: task.device.nicMac,
+      nicInterface: task.device.nicInterface || '',
       hostname: task.device.hostname,
       osIp: task.device.osIp,
       osGateway: task.device.osGateway,

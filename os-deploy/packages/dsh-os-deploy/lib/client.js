@@ -5310,6 +5310,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				"bmcUser": string(),
 				"bmcPassword": string(),
 				"nicMac": string(),
+				"nicInterface": union([_undefined(), string()]).optional(),
 				"hostname": string(),
 				"osIp": string(),
 				"osGateway": string(),
@@ -5362,6 +5363,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					"bmcUser": string(),
 					"bmcPassword": string(),
 					"nicMac": string(),
+					"nicInterface": union([_undefined(), string()]).optional(),
 					"hostname": string(),
 					"osIp": string(),
 					"osGateway": string(),
@@ -5445,6 +5447,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				"bmcUser": string(),
 				"bmcPassword": string(),
 				"nicMac": string(),
+				"nicInterface": union([_undefined(), string()]).optional(),
 				"hostname": string(),
 				"osIp": string(),
 				"osGateway": string(),
@@ -6203,6 +6206,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					bmcUser: "Administrator",
 					bmcPassword: "",
 					nicMac: "",
+					nicInterface: "",
 					hostname: "",
 					osIp: "",
 					osGateway: "",
@@ -6452,6 +6456,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 								bmcUser: srv.bmcUser || form.bmcUser,
 								bmcPassword: form.bmcPassword,
 								nicMac: form.nicMac,
+								nicInterface: form.nicInterface,
 								hostname: form.hostname || srv.name,
 								osIp: form.osIp,
 								osGateway: form.osGateway,
@@ -6470,6 +6475,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 							bmcUser: form.bmcUser,
 							bmcPassword: form.bmcPassword,
 							nicMac: form.nicMac,
+							nicInterface: form.nicInterface,
 							hostname: form.hostname,
 							osIp: form.osIp,
 							osGateway: form.osGateway,
@@ -6670,7 +6676,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					label: "root 密码",
 					value: form.rootPassword,
 					onChange: setF("rootPassword")
-				}), field("主机名", form.hostname, setF("hostname"), "server-01")), h("div", { className: "osd-row" }, field("OS IP", form.osIp, setF("osIp"), "192.168.1.100"), field("网关", form.osGateway, setF("osGateway"), "192.168.1.1"), field("子网掩码位数", form.osPrefixLen, setF("osPrefixLen"), "24"), field("DNS", form.osDns, setF("osDns"), "114.114.114.114")), h("div", { className: "osd-row" }, field("业务网卡 MAC", form.nicMac, setF("nicMac"), "aa:bb:cc:dd:ee:ff")), h("div", { className: "osd-meta" }, form.diskSn ? `目标磁盘 SN: ${form.diskSn} —— 安装会清空该盘上的所有数据！` : "注意：未选择目标磁盘时将自动使用第一块盘，安装会清空该盘上的所有数据！")), h("div", { className: "osd-row" }, btn("创建安装任务", doCreateTask, "osd-btn-primary", busy || !svc.running || !form.imageId || !form.rootPassword || !form.useServerManager && !form.bmcHost), !svc.running && h("span", {
+				}), field("主机名", form.hostname, setF("hostname"), "server-01")), h("div", { className: "osd-row" }, field("OS IP", form.osIp, setF("osIp"), "192.168.1.100"), field("网关", form.osGateway, setF("osGateway"), "192.168.1.1"), field("子网掩码位数", form.osPrefixLen, setF("osPrefixLen"), "24"), field("DNS", form.osDns, setF("osDns"), "114.114.114.114")), h("div", { className: "osd-row" }, field("业务网卡 MAC", form.nicMac, setF("nicMac"), "aa:bb:cc:dd:ee:ff"), field("网卡接口名", form.nicInterface, setF("nicInterface"), "enp125s0f0（留空=auto，但 auto 易触发 Hi1822 扫描断网，建议填接口名）")), h("div", { className: "osd-meta" }, form.diskSn ? `目标磁盘 SN: ${form.diskSn} —— 安装会清空该盘上的所有数据！` : "注意：未选择目标磁盘时将自动使用第一块盘，安装会清空该盘上的所有数据！")), h("div", { className: "osd-row" }, btn("创建安装任务", doCreateTask, "osd-btn-primary", busy || !svc.running || !form.imageId || !form.rootPassword || !form.useServerManager && !form.bmcHost), !svc.running && h("span", {
 					className: "osd-meta",
 					style: { color: "#f5c542" }
 				}, "需先启动部署服务"), busy && h("span", { className: "osd-meta" }, "处理中..."))), tab === "config" && h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "存储与保留"), h("div", { className: "osd-meta" }, "镜像解包仓库、每任务迷你 ISO、任务目录（详细安装日志）与状态文件都存放在存储根目录下。建议放到数据盘，避免撑爆系统盘。"), h("div", { className: "osd-row" }, h("label", { className: "osd-field" }, h("span", { className: "osd-meta" }, "存储根目录"), h("div", { className: "osd-pick-row" }, h("span", {

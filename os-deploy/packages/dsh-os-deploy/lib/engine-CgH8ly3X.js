@@ -1057,7 +1057,7 @@ function genDebianHttpGrubCfg(spec, serverIp, httpPort) {
 		"locale=en_US.UTF-8",
 		"keymap=us",
 		"netcfg/disable_autoconfig=true",
-		"netcfg/choose_interface=auto",
+		`netcfg/choose_interface=${spec.nicInterface || "auto"}`,
 		"netcfg/link_wait_timeout=15",
 		`netcfg/get_ipaddress=${spec.osIp}`,
 		`netcfg/get_netmask=${mask}`,
@@ -1066,7 +1066,8 @@ function genDebianHttpGrubCfg(spec, serverIp, httpPort) {
 		"netcfg/confirm_static=true",
 		`netcfg/get_hostname=${spec.hostname}`,
 		"console=tty0",
-		"console=ttyS0,115200n8"
+		"console=ttyS0,115200n8",
+		"DEBIAN_FRONTEND=text"
 	].join(" ");
 	return `# osdeploy generated grub.cfg — Debian HTTP boot
 set default=0

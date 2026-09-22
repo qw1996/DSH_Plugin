@@ -33,6 +33,10 @@ export interface TargetDevice {
   bmcUser: string
   bmcPassword: string
   nicMac: string             // business NIC MAC (for boot)
+  /** 目标网卡接口名（enp125s0f0 等）——Debian netcfg/choose_interface 用。
+   *  原工具用显式接口名成功；auto 会让 netcfg 扫描四端口触发 hinic 问题
+   *  导致网络断、choose-mirror 卡死（9/22 故障）。空则回退 auto。 */
+  nicInterface?: string
   hostname: string
   // OS network config
   osIp: string
