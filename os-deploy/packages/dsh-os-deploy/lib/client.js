@@ -6058,6 +6058,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 .osd-field{display:flex;flex-direction:column;gap:2px;min-width:140px}
 .osd-input{font:inherit;padding:6px 8px;border:1px solid rgba(128,128,128,.4);border-radius:6px;background:transparent}
 .osd-select{font:inherit;padding:6px 8px;border:1px solid rgba(128,128,128,.4);border-radius:6px;background:transparent}
+.osd-pwrow{display:flex;gap:6px;align-items:stretch}
+.osd-pwrow .osd-input{flex:1;min-width:0}
+.osd-pwtoggle{font:inherit;font-size:12px;padding:6px 8px;border:1px solid rgba(128,128,128,.4);border-radius:6px;background:rgba(128,128,128,.12);cursor:pointer;user-select:none;white-space:nowrap;line-height:1}
+.osd-pwtoggle:hover{background:rgba(128,128,128,.22)}
 .osd-pre{white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,Consolas,monospace;font-size:12px;background:rgba(128,128,128,.1);border:1px solid rgba(128,128,128,.25);border-radius:8px;padding:8px;max-height:300px;overflow:auto}
 .osd-h{font-size:13px;font-weight:700;margin:2px 0}
 .osd-badge{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid rgba(128,128,128,.45)}
@@ -6148,6 +6152,22 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					type: type || "text",
 					onChange: (e) => onChange(e.target.value)
 				}));
+			}
+			function PwField(props) {
+				const [show, setShow] = react.useState(false);
+				const { label, value, onChange, placeholder } = props;
+				return h("label", { className: "osd-field" }, h("span", { className: "osd-meta" }, label), h("div", { className: "osd-pwrow" }, h("input", {
+					className: "osd-input",
+					type: show ? "text" : "password",
+					value: value || "",
+					placeholder: placeholder || "",
+					onChange: (e) => onChange(e.target.value)
+				}), h("button", {
+					type: "button",
+					className: "osd-pwtoggle",
+					onClick: () => setShow((s) => !s),
+					title: show ? "隐藏" : "显示"
+				}, show ? "隐藏" : "显示")));
 			}
 			function selectField(label, value, options, onChange) {
 				return h("label", { className: "osd-field" }, h("span", { className: "osd-meta" }, label), h("select", {
@@ -6630,7 +6650,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						...f,
 						selectedServerIds: f.selectedServerIds.includes(s.id) ? f.selectedServerIds.filter((x) => x !== s.id) : [...f.selectedServerIds, s.id]
 					}))
-				}, h("span", { className: "osd-name" }, s.name), h("span", { className: "osd-kv" }, `SSH: ${s.host} · BMC: ${s.bmcHost || "N/A"}`)))) : h(react.Fragment, null, h("div", { className: "osd-row" }, field("BMC 地址", form.bmcHost, setF("bmcHost"), "192.168.1.10"), field("BMC 用户", form.bmcUser, setF("bmcUser"), "Administrator"), field("BMC 密码", form.bmcPassword, setF("bmcPassword"), "", "password"), btn("探测设备", doProbe, "", busy || !form.bmcHost || !form.bmcUser || !form.bmcPassword)), probeResult && h("div", {
+				}, h("span", { className: "osd-name" }, s.name), h("span", { className: "osd-kv" }, `SSH: ${s.host} · BMC: ${s.bmcHost || "N/A"}`)))) : h(react.Fragment, null, h("div", { className: "osd-row" }, field("BMC 地址", form.bmcHost, setF("bmcHost"), "192.168.1.10"), field("BMC 用户", form.bmcUser, setF("bmcUser"), "Administrator"), h(PwField, {
+					label: "BMC 密码",
+					value: form.bmcPassword,
+					onChange: setF("bmcPassword")
+				}), btn("探测设备", doProbe, "", busy || !form.bmcHost || !form.bmcUser || !form.bmcPassword)), probeResult && h("div", {
 					className: "osd-kv",
 					style: { color: probeResult.ok ? "#30a46c" : "#e5484d" }
 				}, probeResult.ok ? `型号: ${probeResult.model} · SN: ${probeResult.serial} · 电源: ${probeResult.powerState} · NIC: ${probeResult.nicMac}` : `探测失败: ${probeResult.error}`), probeResult?.ok && (probeResult.disks || []).length > 0 && h("label", { className: "osd-field" }, h("span", { className: "osd-meta" }, `目标磁盘（点击选择安装盘，共 ${probeResult.disks.length} 块${form.diskSn ? "" : "；未选择时自动使用第一块盘"}）`), h("div", { className: "osd-disklist" }, h("div", { className: "osd-diskrow osd-diskhead" }, h("span", null, "盘符"), h("span", null, "SN"), h("span", null, "类型"), h("span", null, "容量")), probeResult.disks.map((d) => h("div", {
@@ -6642,7 +6666,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						diskSn: f.diskSn === d.serial ? "" : d.serial,
 						diskCapacityBytes: f.diskSn === d.serial ? 0 : d.capacityBytes || 0
 					}))
-				}, h("span", null, d.name || d.id || "—"), h("span", { className: "osd-disk-sn" }, d.serial || "—"), h("span", null, [d.protocol, d.media].filter(Boolean).join(" ") || "—"), h("span", null, fmtCap(d.capacityBytes)))))), probeResult?.ok && (probeResult.disks || []).length === 0 && h("span", { className: "osd-meta" }, "未发现磁盘（安装时将自动使用第一块盘）"))), h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "4. OS 配置"), h("div", { className: "osd-row" }, field("root 密码", form.rootPassword, setF("rootPassword"), "", "password"), field("主机名", form.hostname, setF("hostname"), "server-01")), h("div", { className: "osd-row" }, field("OS IP", form.osIp, setF("osIp"), "192.168.1.100"), field("网关", form.osGateway, setF("osGateway"), "192.168.1.1"), field("子网掩码位数", form.osPrefixLen, setF("osPrefixLen"), "24"), field("DNS", form.osDns, setF("osDns"), "114.114.114.114")), h("div", { className: "osd-row" }, field("业务网卡 MAC", form.nicMac, setF("nicMac"), "aa:bb:cc:dd:ee:ff")), h("div", { className: "osd-meta" }, form.diskSn ? `目标磁盘 SN: ${form.diskSn} —— 安装会清空该盘上的所有数据！` : "注意：未选择目标磁盘时将自动使用第一块盘，安装会清空该盘上的所有数据！")), h("div", { className: "osd-row" }, btn("创建安装任务", doCreateTask, "osd-btn-primary", busy || !svc.running || !form.imageId || !form.rootPassword || !form.useServerManager && !form.bmcHost), !svc.running && h("span", {
+				}, h("span", null, d.name || d.id || "—"), h("span", { className: "osd-disk-sn" }, d.serial || "—"), h("span", null, [d.protocol, d.media].filter(Boolean).join(" ") || "—"), h("span", null, fmtCap(d.capacityBytes)))))), probeResult?.ok && (probeResult.disks || []).length === 0 && h("span", { className: "osd-meta" }, "未发现磁盘（安装时将自动使用第一块盘）"))), h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "4. OS 配置"), h("div", { className: "osd-row" }, h(PwField, {
+					label: "root 密码",
+					value: form.rootPassword,
+					onChange: setF("rootPassword")
+				}), field("主机名", form.hostname, setF("hostname"), "server-01")), h("div", { className: "osd-row" }, field("OS IP", form.osIp, setF("osIp"), "192.168.1.100"), field("网关", form.osGateway, setF("osGateway"), "192.168.1.1"), field("子网掩码位数", form.osPrefixLen, setF("osPrefixLen"), "24"), field("DNS", form.osDns, setF("osDns"), "114.114.114.114")), h("div", { className: "osd-row" }, field("业务网卡 MAC", form.nicMac, setF("nicMac"), "aa:bb:cc:dd:ee:ff")), h("div", { className: "osd-meta" }, form.diskSn ? `目标磁盘 SN: ${form.diskSn} —— 安装会清空该盘上的所有数据！` : "注意：未选择目标磁盘时将自动使用第一块盘，安装会清空该盘上的所有数据！")), h("div", { className: "osd-row" }, btn("创建安装任务", doCreateTask, "osd-btn-primary", busy || !svc.running || !form.imageId || !form.rootPassword || !form.useServerManager && !form.bmcHost), !svc.running && h("span", {
 					className: "osd-meta",
 					style: { color: "#f5c542" }
 				}, "需先启动部署服务"), busy && h("span", { className: "osd-meta" }, "处理中..."))), tab === "config" && h("div", { className: "osd-card" }, h("div", { className: "osd-h" }, "存储与保留"), h("div", { className: "osd-meta" }, "镜像解包仓库、每任务迷你 ISO、任务目录（详细安装日志）与状态文件都存放在存储根目录下。建议放到数据盘，避免撑爆系统盘。"), h("div", { className: "osd-row" }, h("label", { className: "osd-field" }, h("span", { className: "osd-meta" }, "存储根目录"), h("div", { className: "osd-pick-row" }, h("span", {

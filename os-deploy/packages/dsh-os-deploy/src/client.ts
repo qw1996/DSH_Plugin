@@ -36,6 +36,10 @@ const CSS = `
 .osd-field{display:flex;flex-direction:column;gap:2px;min-width:140px}
 .osd-input{font:inherit;padding:6px 8px;border:1px solid rgba(128,128,128,.4);border-radius:6px;background:transparent}
 .osd-select{font:inherit;padding:6px 8px;border:1px solid rgba(128,128,128,.4);border-radius:6px;background:transparent}
+.osd-pwrow{display:flex;gap:6px;align-items:stretch}
+.osd-pwrow .osd-input{flex:1;min-width:0}
+.osd-pwtoggle{font:inherit;font-size:12px;padding:6px 8px;border:1px solid rgba(128,128,128,.4);border-radius:6px;background:rgba(128,128,128,.12);cursor:pointer;user-select:none;white-space:nowrap;line-height:1}
+.osd-pwtoggle:hover{background:rgba(128,128,128,.22)}
 .osd-pre{white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,Consolas,monospace;font-size:12px;background:rgba(128,128,128,.1);border:1px solid rgba(128,128,128,.25);border-radius:8px;padding:8px;max-height:300px;overflow:auto}
 .osd-h{font-size:13px;font-weight:700;margin:2px 0}
 .osd-badge{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid rgba(128,128,128,.45)}
@@ -130,6 +134,20 @@ export async function apply(ctx: any) {
     return h('label', { className: 'osd-field' },
       h('span', { className: 'osd-meta' }, label),
       h('input', { className: 'osd-input', value: value || '', placeholder: placeholder || '', type: type || 'text', onChange: (e: any) => onChange(e.target.value) })
+    )
+  }
+
+  // 密码输入框：带显示/隐藏切换按钮（函数组件，自有 visibility 状态）。
+  // 用法 h(PwField, { label, value, onChange, placeholder? }) ——与 field() 同形参。
+  function PwField(props: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+    const [show, setShow] = React.useState(false)
+    const { label, value, onChange, placeholder } = props
+    return h('label', { className: 'osd-field' },
+      h('span', { className: 'osd-meta' }, label),
+      h('div', { className: 'osd-pwrow' },
+        h('input', { className: 'osd-input', type: show ? 'text' : 'password', value: value || '', placeholder: placeholder || '', onChange: (e: any) => onChange(e.target.value) }),
+        h('button', { type: 'button', className: 'osd-pwtoggle', onClick: () => setShow(s => !s), title: show ? '隐藏' : '显示' }, show ? '隐藏' : '显示'),
+      ),
     )
   }
 
@@ -558,7 +576,7 @@ export async function apply(ctx: any) {
             h('div', { className: 'osd-row' },
               field('BMC 地址', form.bmcHost, setF('bmcHost'), '192.168.1.10'),
               field('BMC 用户', form.bmcUser, setF('bmcUser'), 'Administrator'),
-              field('BMC 密码', form.bmcPassword, setF('bmcPassword'), '', 'password'),
+              h(PwField, { label: 'BMC 密码', value: form.bmcPassword, onChange: setF('bmcPassword') }),
               btn('探测设备', doProbe, '', busy || !form.bmcHost || !form.bmcUser || !form.bmcPassword),
             ),
             probeResult && h('div', { className: 'osd-kv', style: { color: probeResult.ok ? '#30a46c' : '#e5484d' } },
@@ -590,7 +608,7 @@ export async function apply(ctx: any) {
         h('div', { className: 'osd-card' },
           h('div', { className: 'osd-h' }, '4. OS 配置'),
           h('div', { className: 'osd-row' },
-            field('root 密码', form.rootPassword, setF('rootPassword'), '', 'password'),
+            h(PwField, { label: 'root 密码', value: form.rootPassword, onChange: setF('rootPassword') }),
             field('主机名', form.hostname, setF('hostname'), 'server-01'),
           ),
           h('div', { className: 'osd-row' },
