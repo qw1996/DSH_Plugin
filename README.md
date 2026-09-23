@@ -14,6 +14,27 @@ DeepSeek Harness（DSH）插件集合。**每个插件一个目录**，目录内
 
 前提：已装 DSH、Node.js、（server-manager 需）OpenSSH 客户端、git。
 
+### 方式一：`dsh plugin add`（推荐，一条命令）
+
+各插件已声明 `dsh.bundle.patch`（安装后自动挂入 profile 的 bundle 层）。
+monorepo 子目录用 pnpm 的 `#path:` 语法：
+
+```powershell
+# GitHub 可直连的环境
+dsh plugin --profile web add "git+https://github.com/qw1996/DSH_Plugin.git#path:os-deploy/packages/dsh-os-deploy"
+dsh plugin --profile web add "git+https://github.com/qw1996/DSH_Plugin.git#path:server-manager/dsh-server-manager"
+dsh plugin --profile web add "git+https://github.com/qw1996/DSH_Plugin.git#path:experience/dsh-skill-experience"
+
+# GitHub HTTPS 被墙的环境（走 SSH over 443，需已配置 SSH key）
+dsh plugin --profile web add "git+ssh://git@ssh.github.com:443/qw1996/DSH_Plugin.git#path:os-deploy/packages/dsh-os-deploy"
+```
+
+装完重启 DSH 生效。`dsh plugin` 是 pnpm 的薄封装：包带 `dsh.bundle.patch`
+声明 → 安装后自动进 `dsh.profile.bundles` 层列表；本仓库包均已提交 `lib/`
+构建产物、无 prepare 脚本，不会触发 pnpm 的构建白名单拦截。
+
+### 方式二：clone + setup.ps1
+
 ```powershell
 git clone https://github.com/qw1996/DSH_Plugin.git
 cd DSH_Plugin
@@ -26,6 +47,16 @@ powershell -ExecutionPolicy Bypass -File setup.ps1 -Plugins experience
 powershell -ExecutionPolicy Bypass -File setup.ps1 -Plugins server-manager -PresetId <你的preset id>
 powershell -ExecutionPolicy Bypass -File setup.ps1 -Plugins os-deploy
 ```
+
+### 方式三：clone 后按本地路径装
+
+```powershell
+git clone https://github.com/qw1996/DSH_Plugin.git
+cd DSH_Plugin
+dsh plugin --profile web add ./os-deploy/packages/dsh-os-deploy
+```
+
+（`dsh plugin` 会把相对路径锚定到当前目录再交给 pnpm。）
 
 `setup.ps1` 做的事：
 
