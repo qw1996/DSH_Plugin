@@ -1002,9 +1002,10 @@ d-i finish-install/reboot_in_progress note
 
 d-i preseed/early_command string \\
   mkdir -p /etc/apt/apt.conf.d ; \\
-  printf '%s\\n' 'Acquire::AllowInsecureRepositories "true";' 'APT::Get::AllowUnauthenticated "true";' 'Acquire::Retries "30";' 'Acquire::http::Timeout "10";' 'Acquire::https::Timeout "10";' > /etc/apt/apt.conf.d/99osdeploy.conf ; \\
-  sh -c "while [ ! -d /target/etc/apt/apt.conf.d ]; do sleep 2; done; cp /etc/apt/apt.conf.d/99osdeploy.conf /target/etc/apt/apt.conf.d/99osdeploy.conf" & \\
-  ( N=0; while true; do sleep 10; N=$((N+1)); SL=$( { tail -20 /var/log/syslog 2>/dev/null; tail -15 /var/log/installer.log 2>/dev/null; } | tr '\\n' '|' | sed 's/ /_/g; s/&/+/g' | head -c 1400); wget -q -O /dev/null "${base}?task=${spec.taskId}&stage=syslog&d=$N|\${SL:-empty}" 2>/dev/null || true; done ) & \\
+  printf '%s\\n' 'Acquire::AllowInsecureRepositories "true";' 'APT::Get::AllowUnauthenticated "true";' > /etc/apt/apt.conf.d/99osdeploy.conf ; \\
+  printf '%s\\n' 'tries = 100' 'timeout = 15' 'waitretry = 5' > /etc/wgetrc ; \\
+  sh -c "while [ ! -d /target/etc/apt/apt.conf.d ]; do sleep 2; done; cp /etc/apt/apt.conf.d/99osdeploy.conf /target/etc/apt/apt.conf.d/99osdeploy.conf; printf '%s\\n' 'Acquire::Retries 50;' 'Acquire::http::Timeout 20;' 'Acquire::https::Timeout 20;' >> /target/etc/apt/apt.conf.d/99osdeploy.conf" >/dev/null 2>&1 & \\
+  ( N=0; while true; do sleep 10; N=$((N+1)); SL=$( { echo "LK=$(ip -o -4 addr show scope global 2>/dev/null | head -2; ip route show 2>/dev/null | head -2)"; tail -14 /var/log/syslog 2>/dev/null | grep -v early_command | cut -c1-130; tail -6 /var/log/installer.log 2>/dev/null | cut -c1-130; } | tr '\\n' '|' | sed 's/ /_/g; s/&/+/g' | head -c 1500); wget -q -T 8 -O /dev/null "${base}?task=${spec.taskId}&stage=syslog&d=$N|\${SL:-empty}" 2>/dev/null || true; done ) >/dev/null 2>&1 & \\
   wget -q -O /dev/null "${base}?task=${spec.taskId}&stage=early-apt-config" || true
 
 d-i preseed/late_command string \\
@@ -1068,11 +1069,17 @@ function genDebianHttpGrubCfg(spec, serverIp, httpPort) {
 		"netcfg/confirm_static=true",
 		`netcfg/get_hostname=${spec.hostname}`,
 		"console=tty0",
-		"console=ttyS0,115200n8"
+		"console=ttyS0,115200n8",
+		`rd.syslog=${serverIp}`
 	].join(" ");
 	return `# osdeploy generated grub.cfg — Debian HTTP boot
 set default=0
 set timeout=5
+# 串口终端：grub 菜单/报错同步输出到 SOL（iBMC 串口），否则 grub 阶段是黑盒
+# ——task_e48730bd9d40/67f820e8023f 的 HTTP-boot 失败在 SOL 上完全不可见。
+serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
+terminal_input serial console
+terminal_output serial console
 menuentry 'osdeploy ${spec.distroId} (${spec.hostname || spec.osIp})' --class gnu-linux {
   net_add_addr e0 efinet0 ${spec.osIp}
   linux (http,${serverIp}:${httpPort})/repo/${spec.distroId}/netboot-kernel ${kargs}
@@ -1505,6 +1512,15 @@ var DeployRunner = class {
 				const isoMB = Math.round(binfo.size / 1048576);
 				this.progress("building", 11, `Mini boot ISO ready: ${isoOut} (${isoMB}MB, boot image ${(binfo.bootImageSize / 1048576).toFixed(1)}MB)`);
 			}
+			const powerState = sys.PowerState;
+			this.progress("resetting", 12, "Cold-resetting machine to clear NIC state...");
+			if (powerState === "On") {
+				await this.rf.power("ForceOff");
+				await sleep(12e3);
+			}
+			await this.rf.power("On");
+			this.progress("resetting", 13, "Waiting for machine POST + disk OS boot (5min)...");
+			await sleep(3e5);
 			this.progress("mounting", 12, "Mounting virtual CD...");
 			const imageUrl = `https://${this.serverIp}/iso/${this.spec.taskId}.iso`;
 			try {
@@ -1554,13 +1570,12 @@ var DeployRunner = class {
 				}
 			}
 			if (!inserted) throw new Error(`virtual media did not insert within ${Math.round(mountTimeoutMs / 6e4)} min (ISO ${isoMB}MB; 检查 BMC 到 ${this.serverIp}:443 的连通性/证书)`);
-			this.progress("booting", 20, "Setting boot override + restarting...");
+			this.progress("booting", 20, "Setting boot override + warm restart into virtual CD...");
 			await this.rf.setBootOnce("Cd");
-			const powerState = sys.PowerState;
-			await this.rf.power(powerState === "On" ? "ForceRestart" : "On");
+			await this.rf.power("ForceRestart");
 			this.progress("installing", 25, "Machine booting... waiting for installer reports...");
 			const startTime = Date.now();
-			const timeoutMs = 18e5;
+			const timeoutMs = 27e5;
 			while (Date.now() - startTime < timeoutMs) {
 				if (this.cancelled) {
 					await this.rf.vmediaDisconnect().catch(() => {});
@@ -1589,9 +1604,10 @@ var DeployRunner = class {
 				}
 			}
 			await this.rf.vmediaDisconnect().catch(() => {});
+			const gotStages = [...this.stages].join(",") || "无";
 			return {
 				ok: false,
-				error: `timeout waiting for SSH (30 min)；已收到的安装器回报: ${[...this.stages].join(",") || "无"}`
+				error: `timeout waiting for SSH (${Math.round(timeoutMs / 6e4)} min)；已收到的安装器回报: ${gotStages}`
 			};
 		} catch (e) {
 			await this.rf.vmediaDisconnect().catch(() => {});
