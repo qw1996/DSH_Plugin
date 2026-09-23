@@ -44,6 +44,7 @@ DSH_Plugin/
   README.md                 # 本索引
   setup.ps1                 # 一键安装脚本
   .gitignore
+  .dsh/skills/              # 经验技能档案（exp-*，随仓库分发，项目级继承）
   <插件名>/                  # 每个插件一个目录
     <包名>/                  #   一个或多个 npm 包（含已构建 lib/）
       package.json
@@ -51,6 +52,17 @@ DSH_Plugin/
     composition/            #   host.patch.yml + preset.patch.yml 挂载片段
     README.md               #   插件说明（安装 / 构建 / 使用）
 ```
+
+### 经验技能档案（.dsh/skills/）
+
+安装了 `experience` 插件的环境，在本仓库内工作的 DSH 会话会自动继承 `.dsh/skills/` 下的
+经验技能（项目级）。现有档案：
+
+- `exp-debian-bmc-netboot-deploy` —— 鲲鹏 + iBMC 全自动装 Debian 的完整打法：引导链顺序
+  （冷复位→等待→挂盘→热重启）、hns3 断链双层重试容错、诊断工具箱（心跳/SOL/串口/安装器 shell）、
+  关键排障对照表
+- `exp-repo-file-crlf-corruption` —— Windows 同步 Linux 仓库时文本元数据被静默转 CRLF 的
+  隐蔽故障：判定、修复、防御（曾连续弄死 6+ 次 Debian 部署的最终根因）
 
 ## 安全
 
