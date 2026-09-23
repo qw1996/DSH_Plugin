@@ -360,6 +360,34 @@ export async function apply(ctx: any) {
       finally { setBusy(false) }
     }
 
+    // 复制任务配置到创建表单：把目标任务填写的镜像/组件/设备信息回填，
+    // 免去重复输入（反复重装调试场景常用）
+    function copyTaskToForm(t: any) {
+      const d = t.device || {}
+      setForm((f: any) => ({
+        ...f,
+        imageId: t.imageId || f.imageId,
+        components: Array.isArray(t.components) ? [...t.components] : ['core'],
+        bmcHost: d.bmcHost || '',
+        bmcUser: d.bmcUser || 'Administrator',
+        bmcPassword: d.bmcPassword || '',
+        nicMac: d.nicMac || '',
+        hostname: d.hostname || '',
+        osIp: d.osIp || '',
+        osGateway: d.osGateway || '',
+        osPrefixLen: String(d.osPrefixLen || 24),
+        osDns: Array.isArray(d.osDns) ? d.osDns.join(', ') : (d.osDns || '114.114.114.114'),
+        rootPassword: d.rootPassword || '',
+        diskSn: d.diskSn || '',
+        diskCapacityBytes: d.diskCapacityBytes || 0,
+        useServerManager: false,
+        selectedServerIds: [],
+      }))
+      setProbeResult(null)
+      setMsg(`已复制任务 ${t.id} 的配置到创建表单，可直接创建`)
+      setTab('create')
+    }
+
     async function doCancelTask(id: string) {
       try { unwrap(await remote.cancelTask({ taskId: id })) } catch (e: any) { setMsg('取消失败: ' + String(e?.message || e)) }
     }
@@ -454,6 +482,7 @@ export async function apply(ctx: any) {
             h('div', { className: 'osd-kv' }, `创建: ${fmt(t.createdAt)}${t.finishedAt ? ' · 完成: ' + fmt(t.finishedAt) : ''}`),
             t.error && h('div', { style: { color: '#e5484d', fontSize: 12 } }, t.error),
             h('div', { className: 'osd-row' },
+              btn('复制配置', (e: any) => { e.stopPropagation(); copyTaskToForm(t) }),
               (t.status === 'running' || t.status === 'queued') && btn('取消', (e: any) => { e.stopPropagation(); doCancelTask(t.id) }, 'osd-btn-danger'),
               (t.status === 'success' || t.status === 'failed' || t.status === 'cancelled') && btn('删除', (e: any) => { e.stopPropagation(); doDeleteTask(t.id) }, 'osd-btn-danger'),
             ),

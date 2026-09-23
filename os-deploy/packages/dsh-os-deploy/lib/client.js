@@ -6497,6 +6497,31 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						setBusy(false);
 					}
 				}
+				function copyTaskToForm(t) {
+					const d = t.device || {};
+					setForm((f) => ({
+						...f,
+						imageId: t.imageId || f.imageId,
+						components: Array.isArray(t.components) ? [...t.components] : ["core"],
+						bmcHost: d.bmcHost || "",
+						bmcUser: d.bmcUser || "Administrator",
+						bmcPassword: d.bmcPassword || "",
+						nicMac: d.nicMac || "",
+						hostname: d.hostname || "",
+						osIp: d.osIp || "",
+						osGateway: d.osGateway || "",
+						osPrefixLen: String(d.osPrefixLen || 24),
+						osDns: Array.isArray(d.osDns) ? d.osDns.join(", ") : d.osDns || "114.114.114.114",
+						rootPassword: d.rootPassword || "",
+						diskSn: d.diskSn || "",
+						diskCapacityBytes: d.diskCapacityBytes || 0,
+						useServerManager: false,
+						selectedServerIds: []
+					}));
+					setProbeResult(null);
+					setMsg(`已复制任务 ${t.id} 的配置到创建表单，可直接创建`);
+					setTab("create");
+				}
 				async function doCancelTask(id) {
 					try {
 						unwrap(await remote.cancelTask({ taskId: id }));
@@ -6591,7 +6616,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				})), h("div", { className: "osd-kv" }, `创建: ${fmt(t.createdAt)}${t.finishedAt ? " · 完成: " + fmt(t.finishedAt) : ""}`), t.error && h("div", { style: {
 					color: "#e5484d",
 					fontSize: 12
-				} }, t.error), h("div", { className: "osd-row" }, (t.status === "running" || t.status === "queued") && btn("取消", (e) => {
+				} }, t.error), h("div", { className: "osd-row" }, btn("复制配置", (e) => {
+					e.stopPropagation();
+					copyTaskToForm(t);
+				}), (t.status === "running" || t.status === "queued") && btn("取消", (e) => {
 					e.stopPropagation();
 					doCancelTask(t.id);
 				}, "osd-btn-danger"), (t.status === "success" || t.status === "failed" || t.status === "cancelled") && btn("删除", (e) => {
